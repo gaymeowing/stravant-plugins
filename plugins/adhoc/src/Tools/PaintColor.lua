@@ -1,6 +1,4 @@
 --!strict
-local UserInputService = game:GetService("UserInputService")
-
 local Plugin = script.Parent.Parent.Parent
 local Packages = Plugin.Packages
 local React = require(Packages.React)
@@ -35,9 +33,9 @@ local TRANSPARENT_TO_BLACK = NumberSequence.new({
 })
 
 -- Begins a drag interaction on a color picker element.
--- Uses InputObject.Position for the initial click (same coordinate space as
--- AbsolutePosition inside a DockWidgetPluginGui), then GetMouseLocation
--- deltas for the drag loop (deltas are coordinate-space-independent).
+-- Creates a full-panel overlay to capture GUI-based InputChanged events during
+-- the drag, avoiding UserInputService which doesn't work correctly inside a
+-- DockWidgetPluginGui. Detects release via the original InputObject lifecycle.
 local function beginPickerDrag(
 	frame: GuiObject,
 	input: InputObject,
@@ -57,16 +55,31 @@ local function beginPickerDrag(
 
 	onUpdate(math.clamp(startRelX, 0, 1), math.clamp(startRelY, 0, 1))
 
-	-- Track drag via GetMouseLocation deltas (space-independent)
-	local startMouse = UserInputService:GetMouseLocation()
-	task.spawn(function()
-		while UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) do
-			local mouse = UserInputService:GetMouseLocation()
-			local delta = mouse - startMouse
-			local relX = startRelX + delta.X / absSize.X
-			local relY = startRelY + delta.Y / absSize.Y
+	-- Full-panel overlay captures mouse movement during the drag.
+	-- Without this, InputChanged only fires while over the small picker element.
+	local panel = frame:FindFirstAncestorWhichIsA("DockWidgetPluginGui")
+	local overlay = Instance.new("TextButton")
+	overlay.Name = "DragOverlay"
+	overlay.Size = UDim2.fromScale(1, 1)
+	overlay.BackgroundTransparency = 1
+	overlay.ZIndex = 1000
+	overlay.Text = ""
+	overlay.Active = true
+	overlay.Parent = panel
+
+	overlay.InputChanged:Connect(function(changedInput)
+		if changedInput.UserInputType == Enum.UserInputType.MouseMovement then
+			local pos = Vector2.new(changedInput.Position.X, changedInput.Position.Y)
+			local relX = (pos.X - absPos.X) / absSize.X
+			local relY = (pos.Y - absPos.Y) / absSize.Y
 			onUpdate(math.clamp(relX, 0, 1), math.clamp(relY, 0, 1))
-			task.wait()
+		end
+	end)
+
+	-- Detect release via the original InputObject's lifecycle
+	input.Changed:Connect(function()
+		if input.UserInputState == Enum.UserInputState.End then
+			overlay:Destroy()
 		end
 	end)
 end

@@ -4,7 +4,7 @@ local COMBINE_TOOLBAR = false
 local createSharedToolbar = require(script.Parent.Packages.createSharedToolbar)
 local Signal = require(script.Parent.Packages.Signal)
 
-local RIBBON_ICON = "rbxassetid://98256996626224"
+local RIBBON_ICON = "rbxassetid://111115477526194"
 local TOOLTIP = "Open Adhoc Tools panel — a collection of small community-requested tools."
 
 local setButtonActive: (active: boolean) -> () = nil
@@ -27,7 +27,7 @@ if COMBINE_TOOLBAR then
 	end
 else
 	local toolbar = plugin:CreateToolbar("Adhoc Tools")
-	local button = toolbar:CreateButton("openAdhocTools", TOOLTIP, RIBBON_ICON, "Adhoc Tools")
+	local button = toolbar:CreateButton("openAdhocTools", TOOLTIP, RIBBON_ICON, "AdHoc")
 	local clickCn = button.Click:Connect(function()
 		buttonClicked:Fire()
 	end)

@@ -29,15 +29,32 @@ local function discoverTools(): { ToolDefinition }
 	return allTools
 end
 
+-- Common settings applied to all tools with their defaults
+local COMMON_TOOL_DEFAULTS = {
+	TargetLocked = false,
+}
+
 local function initializeToolSettings(
 	settings: Settings.AdhocSettings,
 	allTools: { ToolDefinition }
 )
 	for _, tool in allTools do
-		if settings.ToolSettings[tool.Id] == nil and tool.DefaultSettings then
-			settings.ToolSettings[tool.Id] = table.clone(tool.DefaultSettings)
-		elseif settings.ToolSettings[tool.Id] == nil then
+		if settings.ToolSettings[tool.Id] == nil then
 			settings.ToolSettings[tool.Id] = {}
+		end
+		-- Backfill missing keys from tool defaults
+		if tool.DefaultSettings then
+			for key, default in tool.DefaultSettings do
+				if settings.ToolSettings[tool.Id][key] == nil then
+					settings.ToolSettings[tool.Id][key] = default
+				end
+			end
+		end
+		-- Ensure common defaults are present
+		for key, default in COMMON_TOOL_DEFAULTS do
+			if settings.ToolSettings[tool.Id][key] == nil then
+				settings.ToolSettings[tool.Id][key] = default
+			end
 		end
 	end
 end
@@ -69,39 +86,10 @@ return function(
 
 	local reactRoot: ReactRoblox.RootType? = nil
 
-	-- Transparent overlay to detect mouse entering/leaving the panel.
-	-- Frames with Active = false don't consume input, so clicks pass through.
-	local mPanelOverlay = Instance.new("Frame")
-	mPanelOverlay.Name = "MouseDetectionOverlay"
-	mPanelOverlay.Size = UDim2.fromScale(1, 1)
-	mPanelOverlay.BackgroundTransparency = 1
-	mPanelOverlay.ZIndex = 100
-	mPanelOverlay.Active = false
-	mPanelOverlay.Parent = panel
-
+	-- Track whether the mouse is over the 3D viewport (vs the panel or off-screen).
+	-- We detect this by checking if GetMouseLocation() is within camera.ViewportSize,
+	-- since DockWidgetPluginGui MouseEnter/MouseLeave events don't work reliably.
 	local mMouseInViewport = true
-	mPanelOverlay.MouseEnter:Connect(function()
-		if not mMouseInViewport then
-			return
-		end
-		mMouseInViewport = false
-		-- Clear highlight and target immediately
-		mTarget = nil
-		mHighlight.Adornee = nil
-		mHighlight.Enabled = false
-		if mActiveTool and mActiveTool.OnMouseLeaveViewport then
-			mActiveTool.OnMouseLeaveViewport(createToolContext())
-		end
-	end)
-	mPanelOverlay.MouseLeave:Connect(function()
-		if mMouseInViewport then
-			return
-		end
-		mMouseInViewport = true
-		if mActiveTool and mActiveTool.OnMouseEnterViewport then
-			mActiveTool.OnMouseEnterViewport(createToolContext())
-		end
-	end)
 
 	-- Raycast params
 	local mRaycastParams = RaycastParams.new()
@@ -177,9 +165,34 @@ return function(
 		end
 		local mouseLocation = UserInputService:GetMouseLocation()
 		local ray = camera:ViewportPointToRay(mouseLocation.X, mouseLocation.Y)
-		local result = workspace:Raycast(ray.Origin, ray.Direction * 10000, mRaycastParams)
-		if result and result.Instance:IsA("BasePart") then
-			return result.Instance
+		local origin = ray.Origin
+		local direction = ray.Direction * 10000
+
+		local skipLocked = mActiveTool ~= nil
+			and not getToolSetting(mActiveTool.Id, "TargetLocked")
+		local ignored: { Instance }? = nil
+
+		for _ = 1, 50 do
+			local params = mRaycastParams
+			if ignored then
+				params = RaycastParams.new()
+				params.FilterType = Enum.RaycastFilterType.Exclude
+				params.FilterDescendantsInstances = ignored
+			end
+
+			local result = workspace:Raycast(origin, direction, params)
+			if not result or not result.Instance:IsA("BasePart") then
+				return nil
+			end
+			if not skipLocked or not result.Instance.Locked then
+				return result.Instance
+			end
+			-- Skip this locked part and try again
+			if not ignored then
+				ignored = { result.Instance }
+			else
+				table.insert(ignored, result.Instance)
+			end
 		end
 		return nil
 	end
@@ -188,19 +201,46 @@ return function(
 	local mLastCameraCFrame = CFrame.new()
 
 	local function connectInputHandling()
-		local camera = workspace.CurrentCamera
-
 		heartbeatCn = RunService.Heartbeat:Connect(function()
 			if not mActiveTool then
 				return
 			end
 
-			-- Don't raycast or fire OnViewChanged when mouse is over the panel
+			local camera = workspace.CurrentCamera
+			local mouseLocation = UserInputService:GetMouseLocation()
+
+			-- Check if mouse is within the 3D viewport bounds.
+			-- When the mouse is over the panel or off-screen, GetMouseLocation
+			-- returns coordinates outside the viewport.
+			local inViewport = false
+			if camera then
+				local vps = camera.ViewportSize
+				inViewport = mouseLocation.X >= 0
+					and mouseLocation.Y >= 0
+					and mouseLocation.X <= vps.X
+					and mouseLocation.Y <= vps.Y
+			end
+
+			-- Handle viewport enter/leave transitions
+			if inViewport and not mMouseInViewport then
+				mMouseInViewport = true
+				if mActiveTool.OnMouseEnterViewport then
+					mActiveTool.OnMouseEnterViewport(createToolContext())
+				end
+			elseif not inViewport and mMouseInViewport then
+				mMouseInViewport = false
+				mTarget = nil
+				mHighlight.Adornee = nil
+				mHighlight.Enabled = false
+				if mActiveTool.OnMouseLeaveViewport then
+					mActiveTool.OnMouseLeaveViewport(createToolContext())
+				end
+			end
+
 			if not mMouseInViewport then
 				return
 			end
 
-			local mouseLocation = UserInputService:GetMouseLocation()
 			local cameraCFrame = if camera then camera.CFrame else CFrame.new()
 
 			if mouseLocation ~= mLastMouseLocation or cameraCFrame ~= mLastCameraCFrame then
@@ -365,18 +405,6 @@ return function(
 		setButtonActive(newActive)
 		if newActive then
 			connectInputHandling()
-			-- Restore last active tool
-			if activeSettings.LastActiveTool then
-				for _, tool in allTools do
-					if tool.Id == activeSettings.LastActiveTool then
-						mActiveTool = tool
-						if tool.OnActivated then
-							tool.OnActivated(createToolContext())
-						end
-						break
-					end
-				end
-			end
 			plugin:Activate(true)
 		else
 			deactivateTool()
@@ -408,14 +436,18 @@ return function(
 		end
 	end)
 
+	-- If the panel is already open (Studio remembered dock state), activate now
+	if panel.Enabled then
+		setActive(true)
+	end
+
 	-- Initial UI
 	updateUI()
 
-	-- When the user selects a different tool, deactivate
+	-- When another plugin takes focus, deactivate the current tool but keep
+	-- the panel open so the user can re-select a tool (which calls plugin:Activate).
 	plugin.Deactivation:Connect(function()
 		deactivateTool()
-		disconnectInputHandling()
-		active = false
 		updateUI()
 	end)
 
@@ -427,7 +459,6 @@ return function(
 			reactRoot = nil
 		end
 		mHighlight:Destroy()
-		mPanelOverlay:Destroy()
 		Settings.Save(plugin, activeSettings)
 		clickedCn:Disconnect()
 	end)

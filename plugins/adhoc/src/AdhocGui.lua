@@ -3,6 +3,7 @@ local Plugin = script.Parent.Parent
 local Packages = Plugin.Packages
 local React = require(Packages.React)
 
+local Checkbox = require("./PluginGui/Checkbox")
 local Colors = require("./PluginGui/Colors")
 local ToolTypes = require("./ToolTypes")
 
@@ -89,7 +90,7 @@ local function ActiveToolView(props: {
 		SetSetting = function(key: string, value: any)
 			props.SetToolSetting(tool.Id, key, value)
 		end,
-		LayoutOrder = 2,
+		LayoutOrder = 3,
 	}
 
 	return e("ScrollingFrame", {
@@ -116,16 +117,31 @@ local function ActiveToolView(props: {
 			OnGoBack = props.OnGoBack,
 			LayoutOrder = 1,
 		}),
-		Settings = tool.RenderSettings and tool.RenderSettings(toolSettingsProps),
-		NoSettings = not tool.RenderSettings and e("TextLabel", {
-			Size = UDim2.new(1, 0, 0, 60),
+		Description = e("TextLabel", {
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
 			BackgroundTransparency = 1,
-			Text = tool.Description .. "\n\nClick on parts in the viewport to use this tool.",
+			Text = tool.Description,
 			TextColor3 = Colors.OFFWHITE,
 			TextWrapped = true,
 			Font = Enum.Font.SourceSans,
 			TextSize = 16,
+			TextXAlignment = Enum.TextXAlignment.Left,
 			LayoutOrder = 2,
+		}, {
+			Padding = e("UIPadding", {
+				PaddingLeft = UDim.new(0, 4),
+				PaddingRight = UDim.new(0, 4),
+			}),
+		}),
+		Settings = tool.RenderSettings and tool.RenderSettings(toolSettingsProps),
+		TargetLocked = (tool.OnClicked or tool.OnViewChanged) and e(Checkbox, {
+			Label = "Allow targeting locked",
+			Checked = props.GetToolSetting(tool.Id, "TargetLocked") == true,
+			Changed = function(checked: boolean)
+				props.SetToolSetting(tool.Id, "TargetLocked", checked)
+			end,
+			LayoutOrder = 100,
 		}),
 	})
 end
@@ -273,6 +289,127 @@ local function SectionDivider(props: {
 			TextColor3 = Colors.OFFWHITE,
 			Font = Enum.Font.SourceSans,
 			TextSize = 14,
+			ZIndex = 2,
+		}),
+	})
+end
+
+-- Modal overlay explaining how to request a new tool
+local function AddToolModal(props: {
+	OnClose: () -> (),
+})
+	return e("Frame", {
+		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = Colors.BLACK,
+		BackgroundTransparency = 0.3,
+		ZIndex = 10,
+		Active = true, -- Block input to elements below
+	}, {
+		Card = e("Frame", {
+			Size = UDim2.new(1, -24, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			Position = UDim2.new(0.5, 0, 0.5, 0),
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			BackgroundColor3 = Colors.GREY,
+			BorderSizePixel = 0,
+			ZIndex = 11,
+		}, {
+			Corner = e("UICorner", {
+				CornerRadius = UDim.new(0, 8),
+			}),
+			Padding = e("UIPadding", {
+				PaddingLeft = UDim.new(0, 12),
+				PaddingRight = UDim.new(0, 12),
+				PaddingTop = UDim.new(0, 12),
+				PaddingBottom = UDim.new(0, 12),
+			}),
+			ListLayout = e("UIListLayout", {
+				SortOrder = Enum.SortOrder.LayoutOrder,
+				Padding = UDim.new(0, 8),
+			}),
+			Title = e("TextLabel", {
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1,
+				Text = "Submit an Idea",
+				TextColor3 = Colors.WHITE,
+				Font = Enum.Font.SourceSansBold,
+				TextSize = 20,
+				TextXAlignment = Enum.TextXAlignment.Center,
+				LayoutOrder = 1,
+				ZIndex = 11,
+			}),
+			Step1 = e("TextLabel", {
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1,
+				RichText = true,
+				Text = '<font color="#4dabf7"><b>1.</b></font>  Click "Review this Asset" on the Creator Store or Toolbox plugin page to post a review with your idea for a new tool or change to an existing one. Be as detailed as you can!',
+				TextColor3 = Colors.WHITE,
+				Font = Enum.Font.SourceSans,
+				TextSize = 16,
+				TextWrapped = true,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				LayoutOrder = 2,
+				ZIndex = 11,
+			}),
+			Step2 = e("TextLabel", {
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1,
+				RichText = true,
+				Text = '<font color="#4dabf7"><b>2.</b></font>  AI coder quickly implements your idea.',
+				TextColor3 = Colors.WHITE,
+				Font = Enum.Font.SourceSans,
+				TextSize = 16,
+				TextWrapped = true,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				LayoutOrder = 3,
+				ZIndex = 11,
+			}),
+			Step3 = e("TextLabel", {
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1,
+				RichText = true,
+				Text = '<font color="#4dabf7"><b>3.</b></font>  Plugin is updated to include your idea or change.',
+				TextColor3 = Colors.WHITE,
+				Font = Enum.Font.SourceSans,
+				TextSize = 16,
+				TextWrapped = true,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				LayoutOrder = 4,
+				ZIndex = 11,
+			}),
+			Hint = e("TextLabel", {
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1,
+				Text = "Tip: You can delete your review and submit a new one to make another request.",
+				TextColor3 = Colors.OFFWHITE,
+				Font = Enum.Font.SourceSansItalic,
+				TextSize = 14,
+				TextWrapped = true,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				LayoutOrder = 5,
+				ZIndex = 11,
+			}),
+			CloseButton = e("TextButton", {
+				Size = UDim2.new(1, 0, 0, 30),
+				BackgroundColor3 = Colors.ACTION_BLUE,
+				AutoButtonColor = true,
+				Text = "Got it",
+				TextColor3 = Colors.WHITE,
+				Font = Enum.Font.SourceSansBold,
+				TextSize = 16,
+				LayoutOrder = 6,
+				ZIndex = 11,
+				[React.Event.MouseButton1Click] = props.OnClose,
+			}, {
+				Corner = e("UICorner", {
+					CornerRadius = UDim.new(0, 4),
+				}),
+			}),
 		}),
 	})
 end
@@ -285,6 +422,7 @@ local function ToolListView(props: {
 	OnTogglePin: (string) -> (),
 })
 	local searchText, setSearchText = React.useState("")
+	local showAddModal, setShowAddModal = React.useState(false)
 	local layoutOrder = 0
 	local function nextOrder(): number
 		layoutOrder += 1
@@ -341,6 +479,39 @@ local function ToolListView(props: {
 		LayoutOrder = nextOrder(),
 	})
 
+	children.SearchDivider = e("Frame", {
+		Size = UDim2.new(1, 0, 0, 6),
+		BackgroundTransparency = 1,
+		LayoutOrder = nextOrder(),
+	}, {
+		Line = e("Frame", {
+			Size = UDim2.new(1, -12, 0, 1),
+			Position = UDim2.new(0, 6, 0, 0),
+			BackgroundColor3 = Colors.OFFWHITE,
+			BackgroundTransparency = 0.5,
+			BorderSizePixel = 0,
+		}),
+	})
+
+	children.AddToolButton = searchText == "" and e("TextButton", {
+		Size = UDim2.new(1, 0, 0, 28),
+		BackgroundColor3 = Colors.ACTION_BLUE,
+		AutoButtonColor = true,
+		Text = "+ Suggest a Tool",
+		TextColor3 = Colors.WHITE,
+		Font = Enum.Font.SourceSans,
+		TextSize = 16,
+		BorderSizePixel = 0,
+		LayoutOrder = nextOrder(),
+		[React.Event.MouseButton1Click] = function()
+			setShowAddModal(true)
+		end,
+	}, {
+		Corner = e("UICorner", {
+			CornerRadius = UDim.new(0, 4),
+		}),
+	})
+
 	-- Pinned tools
 	for _, tool in pinnedTools do
 		children["Pinned_" .. tool.Id] = e(ToolListItem, {
@@ -379,15 +550,25 @@ local function ToolListView(props: {
 		})
 	end
 
-	return e("ScrollingFrame", {
+	return e("Frame", {
 		Size = UDim2.fromScale(1, 1),
-		CanvasSize = UDim2.fromScale(1, 0),
-		BorderSizePixel = 0,
-		BackgroundColor3 = Colors.BLACK,
-		AutomaticCanvasSize = Enum.AutomaticSize.Y,
-		ScrollBarThickness = 4,
-		ScrollBarImageColor3 = Colors.OFFWHITE,
-	}, children)
+		BackgroundTransparency = 1,
+	}, {
+		List = e("ScrollingFrame", {
+			Size = UDim2.fromScale(1, 1),
+			CanvasSize = UDim2.fromScale(1, 0),
+			BorderSizePixel = 0,
+			BackgroundColor3 = Colors.BLACK,
+			AutomaticCanvasSize = Enum.AutomaticSize.Y,
+			ScrollBarThickness = 4,
+			ScrollBarImageColor3 = Colors.OFFWHITE,
+		}, children),
+		Modal = showAddModal and e(AddToolModal, {
+			OnClose = function()
+				setShowAddModal(false)
+			end,
+		}),
+	})
 end
 
 local function AdhocGui(props: {

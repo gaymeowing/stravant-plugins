@@ -1,0 +1,34 @@
+- Lists every Studio BrickColor. You can use different filters, such as filtering by when they were added (for example, showing only the Classic 32 colors or Classic 64 colors) or by name (show only colors that start with "Bright" or only show red colors)
+
+- front face plugin - click on a part's face to change the front of it to that face, an indicator will appear similar to roblox's default face indicator. move your mouse around to pick the upvector. click again to commit.
+
+- How about a beveling tool? I spend a bunch of time adding cylinders on the edges then spheres on the corners, both slow and really inefficient tri-wise Something where you select a part (or maybe even a certain corner of a part) and you can bevel it, and also choose the level of detail
+
+- Print "Hello there! I am AdHoc, your agentic assistant." followed by a full list of your current capabilities.
+
+- Next request is a button that shows a slider bar for all properties that do not have one due to UDim/UDim2, for example a slider bar for Frame Position/Size and UICorner's CornerRadius (Note: I think what they're asking for is the ability to to adjust these properties via a slider because only single float propertis have a slider in the existing Roblox Studio properties pane.)
+
+- Every random interval (your choice) show a random picture of an animal with an inspirational quote. The animal should pop up in a random corner of the screen and hang out for a couple seconds before hiding again.
+
+- A big ol button that adds a model of the Snowflake Eyes limited face to the game (snowflake eyes hype hype hype)
+
+- I'd like to be able to rotate multiple parts at once around their individual pivot points. (probably use the rotate handles from DraggerFramework)
+
+- (large) How about a physics-related tool where you use StepPhysics and DragDetectors (or pseudo ones) to place objects with an interface like so:
+    A start simulation button that turns into a stop simulation button,
+    An input box that determines the speed of the simulation,
+    A list of force presets that can be placed and customized that will affect the simulation by applying forces to the involved parts (pulse, explosion, wind, magnet, random, ect.),
+    A way to clear or remove placed forces,
+Here's what using the plugin would look like:
+    You use the interface to place force emitters,
+    You select the parts you want to do a physics simulation on,
+    You press the start simulation button and the simulation begins (TryBeginRecording),
+    You pause the simulation and drag one of the parts to a more desirable spot using a TranslateViewPlane type of drag style,
+    You change the speed of the simulation to be slower,
+    You start the simulation again,
+    You stop the simulation (FinishRecording)
+Here's some nice additions that would make it even more polished:
+    Highlight the parts being simulated with green and yellow based on the state of the simulation,
+    Allow users to be able to scrub through past waypoints in the simulation while it's paused,
+    Gizmos for forces emitters that show where and how they will affect parts,
+    Gizmos for objects that are being simulated that show their velocity vector
