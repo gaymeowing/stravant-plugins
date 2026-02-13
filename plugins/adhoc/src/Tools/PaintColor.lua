@@ -34,6 +34,43 @@ local TRANSPARENT_TO_BLACK = NumberSequence.new({
 	NumberSequenceKeypoint.new(1, 0),
 })
 
+-- Begins a drag interaction on a color picker element.
+-- Uses InputObject.Position for the initial click (same coordinate space as
+-- AbsolutePosition inside a DockWidgetPluginGui), then GetMouseLocation
+-- deltas for the drag loop (deltas are coordinate-space-independent).
+local function beginPickerDrag(
+	frame: GuiObject,
+	input: InputObject,
+	onUpdate: (relX: number, relY: number) -> ()
+)
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+		return
+	end
+
+	local absPos = frame.AbsolutePosition
+	local absSize = frame.AbsoluteSize
+
+	-- InputObject.Position is in the same space as AbsolutePosition
+	local clickPos = Vector2.new(input.Position.X, input.Position.Y)
+	local startRelX = (clickPos.X - absPos.X) / absSize.X
+	local startRelY = (clickPos.Y - absPos.Y) / absSize.Y
+
+	onUpdate(math.clamp(startRelX, 0, 1), math.clamp(startRelY, 0, 1))
+
+	-- Track drag via GetMouseLocation deltas (space-independent)
+	local startMouse = UserInputService:GetMouseLocation()
+	task.spawn(function()
+		while UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) do
+			local mouse = UserInputService:GetMouseLocation()
+			local delta = mouse - startMouse
+			local relX = startRelX + delta.X / absSize.X
+			local relY = startRelY + delta.Y / absSize.Y
+			onUpdate(math.clamp(relX, 0, 1), math.clamp(relY, 0, 1))
+			task.wait()
+		end
+	end)
+end
+
 -- Saturation-Value picker square
 -- Left→right = saturation 0→1, top→bottom = value 1→0
 local function SVPicker(props: {
@@ -43,22 +80,6 @@ local function SVPicker(props: {
 	OnSVChanged: (s: number, v: number) -> (),
 	LayoutOrder: number?,
 })
-	local frameRef = React.useRef(nil :: GuiObject?)
-
-	local function updateFromMouse()
-		local frame = frameRef.current
-		if not frame then
-			return
-		end
-		local mousePos = UserInputService:GetMouseLocation()
-		local relX = (mousePos.X - frame.AbsolutePosition.X) / frame.AbsoluteSize.X
-		local relY = (mousePos.Y - frame.AbsolutePosition.Y) / frame.AbsoluteSize.Y
-		props.OnSVChanged(
-			math.clamp(relX, 0, 1),
-			1 - math.clamp(relY, 0, 1)
-		)
-	end
-
 	return e("TextButton", {
 		Size = UDim2.new(1, 0, 0, 150),
 		BackgroundColor3 = Color3.fromHSV(props.Hue, 1, 1),
@@ -66,14 +87,9 @@ local function SVPicker(props: {
 		Text = "",
 		ClipsDescendants = true,
 		LayoutOrder = props.LayoutOrder,
-		ref = frameRef,
-		[React.Event.MouseButton1Down] = function()
-			updateFromMouse()
-			task.spawn(function()
-				while UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) do
-					updateFromMouse()
-					task.wait()
-				end
+		[React.Event.InputBegan] = function(rbx: TextButton, input: InputObject)
+			beginPickerDrag(rbx, input, function(relX, relY)
+				props.OnSVChanged(relX, 1 - relY)
 			end)
 		end,
 	}, {
@@ -128,18 +144,6 @@ local function HueBar(props: {
 	OnHueChanged: (number) -> (),
 	LayoutOrder: number?,
 })
-	local frameRef = React.useRef(nil :: GuiObject?)
-
-	local function updateFromMouse()
-		local frame = frameRef.current
-		if not frame then
-			return
-		end
-		local mousePos = UserInputService:GetMouseLocation()
-		local relX = (mousePos.X - frame.AbsolutePosition.X) / frame.AbsoluteSize.X
-		props.OnHueChanged(math.clamp(relX, 0, 1))
-	end
-
 	return e("TextButton", {
 		Size = UDim2.new(1, 0, 0, 20),
 		BackgroundColor3 = Colors.WHITE,
@@ -147,14 +151,9 @@ local function HueBar(props: {
 		Text = "",
 		ClipsDescendants = true,
 		LayoutOrder = props.LayoutOrder,
-		ref = frameRef,
-		[React.Event.MouseButton1Down] = function()
-			updateFromMouse()
-			task.spawn(function()
-				while UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) do
-					updateFromMouse()
-					task.wait()
-				end
+		[React.Event.InputBegan] = function(rbx: TextButton, input: InputObject)
+			beginPickerDrag(rbx, input, function(relX, _relY)
+				props.OnHueChanged(relX)
 			end)
 		end,
 	}, {
