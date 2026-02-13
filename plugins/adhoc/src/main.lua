@@ -300,16 +300,14 @@ return function(
 			OnSelectTool = function(toolId: string)
 				for _, tool in allTools do
 					if tool.Id == toolId then
-						if mActiveTool == tool then
-							-- Clicking the active tool deselects it
-							deactivateTool()
-							updateUI()
-						else
-							activateTool(tool)
-						end
+						activateTool(tool)
 						return
 					end
 				end
+			end,
+			OnGoBack = function()
+				deactivateTool()
+				updateUI()
 			end,
 			OnTogglePin = togglePin,
 			GetToolSetting = getToolSetting,

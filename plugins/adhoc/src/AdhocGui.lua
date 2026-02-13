@@ -4,7 +4,6 @@ local Packages = Plugin.Packages
 local React = require(Packages.React)
 
 local Colors = require("./PluginGui/Colors")
-local SubPanel = require("./PluginGui/SubPanel")
 local ToolTypes = require("./ToolTypes")
 
 type ToolDefinition = ToolTypes.ToolDefinition
@@ -12,6 +11,128 @@ type ToolSettingsProps = ToolTypes.ToolSettingsProps
 
 local e = React.createElement
 
+-- Back header shown at the top of the active tool view
+local function ToolHeader(props: {
+	ToolName: string,
+	OnGoBack: () -> (),
+	LayoutOrder: number?,
+})
+	local isHovered, setIsHovered = React.useState(false)
+
+	return e("Frame", {
+		Size = UDim2.new(1, 0, 0, 32),
+		BackgroundColor3 = Colors.GREY,
+		BorderSizePixel = 0,
+		LayoutOrder = props.LayoutOrder,
+	}, {
+		Corner = e("UICorner", {
+			CornerRadius = UDim.new(0, 4),
+		}),
+		ListLayout = e("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, 4),
+		}),
+		Padding = e("UIPadding", {
+			PaddingLeft = UDim.new(0, 4),
+			PaddingRight = UDim.new(0, 8),
+		}),
+		BackButton = e("TextButton", {
+			Size = UDim2.fromOffset(24, 24),
+			BackgroundColor3 = if isHovered then Colors.ACTION_BLUE else Colors.GREY,
+			Text = "\u{25C0}",
+			TextColor3 = Colors.WHITE,
+			Font = Enum.Font.SourceSans,
+			TextSize = 14,
+			LayoutOrder = 1,
+			[React.Event.MouseButton1Click] = props.OnGoBack,
+			[React.Event.MouseEnter] = function()
+				setIsHovered(true)
+			end,
+			[React.Event.MouseLeave] = function()
+				setIsHovered(false)
+			end,
+		}, {
+			Corner = e("UICorner", {
+				CornerRadius = UDim.new(0, 4),
+			}),
+		}),
+		ToolName = e("TextLabel", {
+			Size = UDim2.new(0, 0, 1, 0),
+			BackgroundTransparency = 1,
+			Text = props.ToolName,
+			TextColor3 = Colors.WHITE,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Font = Enum.Font.SourceSansBold,
+			TextSize = 18,
+			LayoutOrder = 2,
+		}, {
+			Flex = e("UIFlexItem", {
+				FlexMode = Enum.UIFlexMode.Grow,
+			}),
+		}),
+	})
+end
+
+-- Full-panel view when a tool is active
+local function ActiveToolView(props: {
+	Tool: ToolDefinition,
+	OnGoBack: () -> (),
+	GetToolSetting: (toolId: string, key: string) -> any,
+	SetToolSetting: (toolId: string, key: string, value: any) -> (),
+})
+	local tool = props.Tool
+
+	local toolSettingsProps: ToolSettingsProps = {
+		GetSetting = function(key: string): any
+			return props.GetToolSetting(tool.Id, key)
+		end,
+		SetSetting = function(key: string, value: any)
+			props.SetToolSetting(tool.Id, key, value)
+		end,
+		LayoutOrder = 2,
+	}
+
+	return e("ScrollingFrame", {
+		Size = UDim2.fromScale(1, 1),
+		CanvasSize = UDim2.fromScale(1, 0),
+		BorderSizePixel = 0,
+		BackgroundColor3 = Colors.BLACK,
+		AutomaticCanvasSize = Enum.AutomaticSize.Y,
+		ScrollBarThickness = 4,
+		ScrollBarImageColor3 = Colors.OFFWHITE,
+	}, {
+		Padding = e("UIPadding", {
+			PaddingLeft = UDim.new(0, 4),
+			PaddingRight = UDim.new(0, 4),
+			PaddingTop = UDim.new(0, 4),
+			PaddingBottom = UDim.new(0, 40),
+		}),
+		ListLayout = e("UIListLayout", {
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, 4),
+		}),
+		Header = e(ToolHeader, {
+			ToolName = tool.Name,
+			OnGoBack = props.OnGoBack,
+			LayoutOrder = 1,
+		}),
+		Settings = tool.RenderSettings and tool.RenderSettings(toolSettingsProps),
+		NoSettings = not tool.RenderSettings and e("TextLabel", {
+			Size = UDim2.new(1, 0, 0, 60),
+			BackgroundTransparency = 1,
+			Text = tool.Description .. "\n\nClick on parts in the viewport to use this tool.",
+			TextColor3 = Colors.OFFWHITE,
+			TextWrapped = true,
+			Font = Enum.Font.SourceSans,
+			TextSize = 16,
+			LayoutOrder = 2,
+		}),
+	})
+end
+
+-- Search bar for the tool list
 local function SearchBar(props: {
 	SearchText: string,
 	OnSearchChanged: (string) -> (),
@@ -56,7 +177,6 @@ end
 
 local function ToolListItem(props: {
 	Tool: ToolDefinition,
-	IsActive: boolean,
 	IsPinned: boolean,
 	OnSelect: () -> (),
 	OnTogglePin: () -> (),
@@ -64,11 +184,7 @@ local function ToolListItem(props: {
 })
 	local isHovered, setIsHovered = React.useState(false)
 
-	local bgColor = if props.IsActive
-		then Colors.ACTION_BLUE
-		elseif isHovered
-			then Colors.GREY
-			else Colors.BLACK
+	local bgColor = if isHovered then Colors.GREY else Colors.BLACK
 
 	return e("Frame", {
 		Size = UDim2.new(1, 0, 0, 28),
@@ -111,7 +227,7 @@ local function ToolListItem(props: {
 			Text = props.Tool.Name,
 			TextColor3 = Colors.WHITE,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			Font = if props.IsActive then Enum.Font.SourceSansBold else Enum.Font.SourceSans,
+			Font = Enum.Font.SourceSans,
 			TextSize = 18,
 			AutoButtonColor = false,
 			LayoutOrder = 2,
@@ -121,11 +237,11 @@ local function ToolListItem(props: {
 				FlexMode = Enum.UIFlexMode.Grow,
 			}),
 		}),
-		Arrow = props.IsActive and e("TextLabel", {
+		Arrow = e("TextLabel", {
 			Size = UDim2.fromOffset(16, 16),
 			BackgroundTransparency = 1,
 			Text = "\u{25B6}",
-			TextColor3 = Colors.WHITE,
+			TextColor3 = Colors.OFFWHITE,
 			Font = Enum.Font.SourceSans,
 			TextSize = 12,
 			LayoutOrder = 3,
@@ -163,50 +279,12 @@ local function SectionDivider(props: {
 	})
 end
 
-local function ToolSettingsPanel(props: {
-	Tool: ToolDefinition,
-	GetToolSetting: (toolId: string, key: string) -> any,
-	SetToolSetting: (toolId: string, key: string, value: any) -> (),
-	LayoutOrder: number?,
-})
-	local tool = props.Tool
-	if not tool.RenderSettings then
-		return nil
-	end
-
-	local toolSettingsProps: ToolSettingsProps = {
-		GetSetting = function(key: string): any
-			return props.GetToolSetting(tool.Id, key)
-		end,
-		SetSetting = function(key: string, value: any)
-			props.SetToolSetting(tool.Id, key, value)
-		end,
-		LayoutOrder = 1,
-	}
-
-	return e(SubPanel, {
-		Title = tool.Name,
-		LayoutOrder = props.LayoutOrder,
-		Padding = UDim.new(0, 4),
-	}, {
-		Settings = tool.RenderSettings(toolSettingsProps),
-	})
-end
-
-local function AdhocGui(props: {
+-- Tool list view (no tool selected)
+local function ToolListView(props: {
 	AllTools: { ToolDefinition },
-	ActiveToolId: string?,
 	PinnedTools: { string },
-	ToolSettings: { [string]: { [string]: any } },
-	Active: boolean,
-	Panelized: boolean,
-	CurrentSettings: any,
-	UpdatedSettings: () -> (),
-	HandleAction: (string) -> (),
 	OnSelectTool: (string) -> (),
 	OnTogglePin: (string) -> (),
-	GetToolSetting: (toolId: string, key: string) -> any,
-	SetToolSetting: (toolId: string, key: string, value: any) -> (),
 })
 	local searchText, setSearchText = React.useState("")
 	local layoutOrder = 0
@@ -244,17 +322,6 @@ local function AdhocGui(props: {
 		end
 	end
 
-	-- Find active tool for settings panel
-	local activeTool: ToolDefinition? = nil
-	if props.ActiveToolId then
-		for _, tool in props.AllTools do
-			if tool.Id == props.ActiveToolId then
-				activeTool = tool
-				break
-			end
-		end
-	end
-
 	-- Build children
 	local children: { [string]: any } = {}
 
@@ -277,10 +344,9 @@ local function AdhocGui(props: {
 	})
 
 	-- Pinned tools
-	for i, tool in pinnedTools do
+	for _, tool in pinnedTools do
 		children["Pinned_" .. tool.Id] = e(ToolListItem, {
 			Tool = tool,
-			IsActive = props.ActiveToolId == tool.Id,
 			IsPinned = true,
 			OnSelect = function()
 				props.OnSelectTool(tool.Id)
@@ -301,10 +367,9 @@ local function AdhocGui(props: {
 	end
 
 	-- Unpinned tools
-	for i, tool in unpinnedTools do
+	for _, tool in unpinnedTools do
 		children["Tool_" .. tool.Id] = e(ToolListItem, {
 			Tool = tool,
-			IsActive = props.ActiveToolId == tool.Id,
 			IsPinned = false,
 			OnSelect = function()
 				props.OnSelectTool(tool.Id)
@@ -312,16 +377,6 @@ local function AdhocGui(props: {
 			OnTogglePin = function()
 				props.OnTogglePin(tool.Id)
 			end,
-			LayoutOrder = nextOrder(),
-		})
-	end
-
-	-- Active tool settings
-	if activeTool and activeTool.RenderSettings then
-		children.ToolSettings = e(ToolSettingsPanel, {
-			Tool = activeTool,
-			GetToolSetting = props.GetToolSetting,
-			SetToolSetting = props.SetToolSetting,
 			LayoutOrder = nextOrder(),
 		})
 	end
@@ -335,6 +390,50 @@ local function AdhocGui(props: {
 		ScrollBarThickness = 4,
 		ScrollBarImageColor3 = Colors.OFFWHITE,
 	}, children)
+end
+
+local function AdhocGui(props: {
+	AllTools: { ToolDefinition },
+	ActiveToolId: string?,
+	PinnedTools: { string },
+	ToolSettings: { [string]: { [string]: any } },
+	Active: boolean,
+	Panelized: boolean,
+	CurrentSettings: any,
+	UpdatedSettings: () -> (),
+	HandleAction: (string) -> (),
+	OnSelectTool: (string) -> (),
+	OnGoBack: () -> (),
+	OnTogglePin: (string) -> (),
+	GetToolSetting: (toolId: string, key: string) -> any,
+	SetToolSetting: (toolId: string, key: string, value: any) -> (),
+})
+	-- Find active tool
+	local activeTool: ToolDefinition? = nil
+	if props.ActiveToolId then
+		for _, tool in props.AllTools do
+			if tool.Id == props.ActiveToolId then
+				activeTool = tool
+				break
+			end
+		end
+	end
+
+	if activeTool then
+		return e(ActiveToolView, {
+			Tool = activeTool,
+			OnGoBack = props.OnGoBack,
+			GetToolSetting = props.GetToolSetting,
+			SetToolSetting = props.SetToolSetting,
+		})
+	else
+		return e(ToolListView, {
+			AllTools = props.AllTools,
+			PinnedTools = props.PinnedTools,
+			OnSelectTool = props.OnSelectTool,
+			OnTogglePin = props.OnTogglePin,
+		})
+	end
 end
 
 return AdhocGui
