@@ -11,7 +11,7 @@ type ToolSettingsProps = ToolTypes.ToolSettingsProps
 
 local e = React.createElement
 
--- Back header shown at the top of the active tool view
+-- Back header shown at the top of the active tool view — entire row is clickable
 local function ToolHeader(props: {
 	ToolName: string,
 	OnGoBack: () -> (),
@@ -19,11 +19,20 @@ local function ToolHeader(props: {
 })
 	local isHovered, setIsHovered = React.useState(false)
 
-	return e("Frame", {
+	return e("TextButton", {
 		Size = UDim2.new(1, 0, 0, 32),
-		BackgroundColor3 = Colors.GREY,
+		BackgroundColor3 = if isHovered then Colors.ACTION_BLUE else Colors.GREY,
 		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		Text = "",
 		LayoutOrder = props.LayoutOrder,
+		[React.Event.MouseButton1Click] = props.OnGoBack,
+		[React.Event.MouseEnter] = function()
+			setIsHovered(true)
+		end,
+		[React.Event.MouseLeave] = function()
+			setIsHovered(false)
+		end,
 	}, {
 		Corner = e("UICorner", {
 			CornerRadius = UDim.new(0, 4),
@@ -35,28 +44,17 @@ local function ToolHeader(props: {
 			Padding = UDim.new(0, 4),
 		}),
 		Padding = e("UIPadding", {
-			PaddingLeft = UDim.new(0, 4),
+			PaddingLeft = UDim.new(0, 8),
 			PaddingRight = UDim.new(0, 8),
 		}),
-		BackButton = e("TextButton", {
-			Size = UDim2.fromOffset(24, 24),
-			BackgroundColor3 = if isHovered then Colors.ACTION_BLUE else Colors.GREY,
+		BackArrow = e("TextLabel", {
+			Size = UDim2.fromOffset(16, 24),
+			BackgroundTransparency = 1,
 			Text = "\u{25C0}",
 			TextColor3 = Colors.WHITE,
 			Font = Enum.Font.SourceSans,
 			TextSize = 14,
 			LayoutOrder = 1,
-			[React.Event.MouseButton1Click] = props.OnGoBack,
-			[React.Event.MouseEnter] = function()
-				setIsHovered(true)
-			end,
-			[React.Event.MouseLeave] = function()
-				setIsHovered(false)
-			end,
-		}, {
-			Corner = e("UICorner", {
-				CornerRadius = UDim.new(0, 4),
-			}),
 		}),
 		ToolName = e("TextLabel", {
 			Size = UDim2.new(0, 0, 1, 0),
