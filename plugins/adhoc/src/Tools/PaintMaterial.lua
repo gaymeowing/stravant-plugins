@@ -4,7 +4,6 @@ local Packages = Plugin.Packages
 local React = require(Packages.React)
 
 local Colors = require("../PluginGui/Colors")
-local ChipForToggle = require("../PluginGui/ChipForToggle")
 local ToolTypes = require("../ToolTypes")
 
 type ToolContext = ToolTypes.ToolContext
@@ -56,6 +55,47 @@ local MATERIALS = {
 	"Rubber",
 }
 
+local function MaterialRow(props: {
+	Name: string,
+	IsSelected: boolean,
+	OnClick: () -> (),
+	LayoutOrder: number?,
+})
+	local isHovered, setIsHovered = React.useState(false)
+
+	local bgColor = if props.IsSelected
+		then Colors.ACTION_BLUE
+		elseif isHovered then Colors.GREY
+		else Colors.BLACK
+
+	return e("TextButton", {
+		Size = UDim2.new(1, 0, 0, 24),
+		BackgroundColor3 = bgColor,
+		Text = props.Name,
+		TextColor3 = Colors.WHITE,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Font = if props.IsSelected then Enum.Font.SourceSansBold else Enum.Font.SourceSans,
+		TextSize = 16,
+		AutoButtonColor = false,
+		BorderSizePixel = 0,
+		LayoutOrder = props.LayoutOrder,
+		[React.Event.MouseButton1Click] = props.OnClick,
+		[React.Event.MouseEnter] = function()
+			setIsHovered(true)
+		end,
+		[React.Event.MouseLeave] = function()
+			setIsHovered(false)
+		end,
+	}, {
+		Corner = e("UICorner", {
+			CornerRadius = UDim.new(0, 4),
+		}),
+		Padding = e("UIPadding", {
+			PaddingLeft = UDim.new(0, 8),
+		}),
+	})
+end
+
 local function PaintMaterialSettings(props: ToolSettingsProps)
 	local currentMaterial = props.GetSetting("Material") :: string
 
@@ -63,20 +103,17 @@ local function PaintMaterialSettings(props: ToolSettingsProps)
 
 	children.ListLayout = e("UIListLayout", {
 		SortOrder = Enum.SortOrder.LayoutOrder,
-		FillDirection = Enum.FillDirection.Horizontal,
-		HorizontalAlignment = Enum.HorizontalAlignment.Left,
-		Wraps = true,
-		Padding = UDim.new(0, 4),
+		Padding = UDim.new(0, 2),
 	})
 
 	for i, materialName in MATERIALS do
-		children[materialName] = e(ChipForToggle, {
-			Text = materialName,
-			IsCurrent = currentMaterial == materialName,
-			LayoutOrder = i,
+		children[materialName] = e(MaterialRow, {
+			Name = materialName,
+			IsSelected = currentMaterial == materialName,
 			OnClick = function()
 				props.SetSetting("Material", materialName)
 			end,
+			LayoutOrder = i,
 		})
 	end
 
