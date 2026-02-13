@@ -69,6 +69,40 @@ return function(
 
 	local reactRoot: ReactRoblox.RootType? = nil
 
+	-- Transparent overlay to detect mouse entering/leaving the panel.
+	-- Frames with Active = false don't consume input, so clicks pass through.
+	local mPanelOverlay = Instance.new("Frame")
+	mPanelOverlay.Name = "MouseDetectionOverlay"
+	mPanelOverlay.Size = UDim2.fromScale(1, 1)
+	mPanelOverlay.BackgroundTransparency = 1
+	mPanelOverlay.ZIndex = 100
+	mPanelOverlay.Active = false
+	mPanelOverlay.Parent = panel
+
+	local mMouseInViewport = true
+	mPanelOverlay.MouseEnter:Connect(function()
+		if not mMouseInViewport then
+			return
+		end
+		mMouseInViewport = false
+		-- Clear highlight and target immediately
+		mTarget = nil
+		mHighlight.Adornee = nil
+		mHighlight.Enabled = false
+		if mActiveTool and mActiveTool.OnMouseLeaveViewport then
+			mActiveTool.OnMouseLeaveViewport(createToolContext())
+		end
+	end)
+	mPanelOverlay.MouseLeave:Connect(function()
+		if mMouseInViewport then
+			return
+		end
+		mMouseInViewport = true
+		if mActiveTool and mActiveTool.OnMouseEnterViewport then
+			mActiveTool.OnMouseEnterViewport(createToolContext())
+		end
+	end)
+
 	-- Raycast params
 	local mRaycastParams = RaycastParams.new()
 	mRaycastParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -158,6 +192,11 @@ return function(
 
 		heartbeatCn = RunService.Heartbeat:Connect(function()
 			if not mActiveTool then
+				return
+			end
+
+			-- Don't raycast or fire OnViewChanged when mouse is over the panel
+			if not mMouseInViewport then
 				return
 			end
 
@@ -388,6 +427,7 @@ return function(
 			reactRoot = nil
 		end
 		mHighlight:Destroy()
+		mPanelOverlay:Destroy()
 		Settings.Save(plugin, activeSettings)
 		clickedCn:Disconnect()
 	end)

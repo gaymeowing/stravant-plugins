@@ -28,6 +28,8 @@ export type ToolDefinition = {
 	OnViewChanged: ((ctx: ToolContext) -> ())?,
 	OnClicked: ((ctx: ToolContext) -> ())?,
 	OnReleased: ((ctx: ToolContext) -> ())?,
+	OnMouseEnterViewport: ((ctx: ToolContext) -> ())?,
+	OnMouseLeaveViewport: ((ctx: ToolContext) -> ())?,
 
 	-- UI: React component for tool-specific settings panel
 	RenderSettings: ((props: ToolSettingsProps) -> any)?,
