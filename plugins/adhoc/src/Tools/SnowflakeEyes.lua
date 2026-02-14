@@ -88,8 +88,48 @@ end
 local mStatusText = ""
 local mUpdateUI: (() -> ())? = nil
 
+-- Surface highlight: a SurfaceGui with a translucent blue frame
+local mSurfaceGui: SurfaceGui? = nil
+
+local function createSurfaceGui(): SurfaceGui
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = "SnowflakeEyesPreview"
+	gui.AlwaysOnTop = true
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 20
+	local frame = Instance.new("Frame")
+	frame.Size = UDim2.fromScale(1, 1)
+	frame.BackgroundColor3 = Color3.fromRGB(0, 120, 255)
+	frame.BackgroundTransparency = 0.7
+	frame.BorderSizePixel = 0
+	frame.Parent = gui
+	return gui
+end
+
+local function updateSurfaceHighlight(target: BasePart?, face: Enum.NormalId?)
+	if not target or not face then
+		if mSurfaceGui then
+			mSurfaceGui.Adornee = nil
+			mSurfaceGui.Enabled = false
+		end
+		return
+	end
+	if not mSurfaceGui then
+		mSurfaceGui = createSurfaceGui()
+		mSurfaceGui.Parent = game:GetService("CoreGui")
+	end
+	mSurfaceGui.Adornee = target
+	mSurfaceGui.Face = face
+	mSurfaceGui.Enabled = true
+end
+
 local function onViewChanged(ctx: ToolContext)
-	ctx.SetHighlight(ctx.Target)
+	if ctx.Target and ctx.TargetNormal then
+		local face = normalToFace(ctx.Target, ctx.TargetNormal)
+		updateSurfaceHighlight(ctx.Target, face)
+	else
+		updateSurfaceHighlight(nil, nil)
+	end
 end
 
 local function onClicked(ctx: ToolContext)
@@ -128,8 +168,12 @@ local function onClicked(ctx: ToolContext)
 	end)
 end
 
-local function onDeactivated(ctx: ToolContext)
-	ctx.SetHighlight(nil)
+local function onDeactivated(_ctx: ToolContext)
+	updateSurfaceHighlight(nil, nil)
+	if mSurfaceGui then
+		mSurfaceGui:Destroy()
+		mSurfaceGui = nil
+	end
 	mStatusText = ""
 	mUpdateUI = nil
 end
