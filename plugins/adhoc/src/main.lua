@@ -326,8 +326,10 @@ return function(
 		if tool.OnActivated then
 			tool.OnActivated(createToolContext())
 		end
-		-- Activate the plugin so we get input
-		plugin:Activate(true)
+		-- Only activate the plugin (taking over input) if the tool uses the viewport
+		if tool.OnClicked or tool.OnViewChanged or tool.OnActivated then
+			plugin:Activate(true)
+		end
 		updateUI()
 	end
 

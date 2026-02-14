@@ -1,5 +1,3 @@
-- Lists every Studio BrickColor. You can use different filters, such as filtering by when they were added (for example, showing only the Classic 32 colors or Classic 64 colors) or by name (show only colors that start with "Bright" or only show red colors)
-
 - front face plugin - click on a part's face to change the front of it to that face, an indicator will appear similar to roblox's default face indicator. move your mouse around to pick the upvector. click again to commit.
 
 - How about a beveling tool? I spend a bunch of time adding cylinders on the edges then spheres on the corners, both slow and really inefficient tri-wise Something where you select a part (or maybe even a certain corner of a part) and you can bevel it, and also choose the level of detail
