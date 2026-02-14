@@ -130,6 +130,11 @@ local function SetFidelitySettings(props: ToolSettingsProps)
 			end,
 			LayoutOrder = 2,
 		}),
+		Spacer = e("Frame", {
+			Size = UDim2.new(1, 0, 0, 4),
+			BackgroundTransparency = 1,
+			LayoutOrder = 3,
+		}),
 		ApplyRenderButton = e("TextButton", {
 			Size = UDim2.new(1, 0, 0, 30),
 			BackgroundColor3 = Colors.ACTION_BLUE,
@@ -139,7 +144,7 @@ local function SetFidelitySettings(props: ToolSettingsProps)
 			Font = Enum.Font.SourceSansBold,
 			TextSize = 16,
 			BorderSizePixel = 0,
-			LayoutOrder = 3,
+			LayoutOrder = 4,
 			[React.Event.MouseButton1Click] = function()
 				local id = ChangeHistoryService:TryBeginRecording("Set RenderFidelity")
 				if not id then
@@ -170,7 +175,7 @@ local function SetFidelitySettings(props: ToolSettingsProps)
 			Font = Enum.Font.SourceSansBold,
 			TextSize = 16,
 			BorderSizePixel = 0,
-			LayoutOrder = 4,
+			LayoutOrder = 5,
 			[React.Event.MouseButton1Click] = function()
 				local id = ChangeHistoryService:TryBeginRecording("Set CollisionFidelity")
 				if not id then
