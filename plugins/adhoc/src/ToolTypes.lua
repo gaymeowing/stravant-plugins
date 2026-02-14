@@ -3,6 +3,7 @@
 export type ToolContext = {
 	Plugin: Plugin,
 	Target: BasePart?,
+	TargetNormal: Vector3?,
 	IsMouseDown: boolean,
 	GetSetting: (key: string) -> any,
 	SetSetting: (key: string, value: any) -> (),

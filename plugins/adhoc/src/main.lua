@@ -73,6 +73,7 @@ return function(
 	local mActiveTool: ToolDefinition? = nil
 	local mIsMouseDown = false
 	local mTarget: BasePart? = nil
+	local mTargetNormal: Vector3? = nil
 	local mRecordingId: string? = nil
 
 	-- Highlight for hover preview
@@ -125,6 +126,7 @@ return function(
 		return {
 			Plugin = plugin,
 			Target = mTarget,
+			TargetNormal = mTargetNormal,
 			IsMouseDown = mIsMouseDown,
 			GetSetting = function(key: string): any
 				return getToolSetting(toolId, key)
@@ -159,10 +161,10 @@ return function(
 		}
 	end
 
-	local function raycastFromMouse(): BasePart?
+	local function raycastFromMouse(): (BasePart?, Vector3?)
 		local camera = workspace.CurrentCamera
 		if not camera then
-			return nil
+			return nil, nil
 		end
 		local mouseLocation = UserInputService:GetMouseLocation()
 		local ray = camera:ViewportPointToRay(mouseLocation.X, mouseLocation.Y)
@@ -183,10 +185,10 @@ return function(
 
 			local result = workspace:Raycast(origin, direction, params)
 			if not result or not result.Instance:IsA("BasePart") then
-				return nil
+				return nil, nil
 			end
 			if not skipLocked or not result.Instance.Locked then
-				return result.Instance
+				return result.Instance, result.Normal
 			end
 			-- Skip this locked part and try again
 			if not ignored then
@@ -195,7 +197,7 @@ return function(
 				table.insert(ignored, result.Instance)
 			end
 		end
-		return nil
+		return nil, nil
 	end
 
 	local mLastMouseLocation = Vector2.zero
@@ -231,6 +233,7 @@ return function(
 			elseif not inViewport and mMouseInViewport then
 				mMouseInViewport = false
 				mTarget = nil
+				mTargetNormal = nil
 				mHighlight.Adornee = nil
 				mHighlight.Enabled = false
 				if mActiveTool.OnMouseLeaveViewport then
@@ -247,7 +250,7 @@ return function(
 			if mouseLocation ~= mLastMouseLocation or cameraCFrame ~= mLastCameraCFrame then
 				mLastMouseLocation = mouseLocation
 				mLastCameraCFrame = cameraCFrame
-				mTarget = raycastFromMouse()
+				mTarget, mTargetNormal = raycastFromMouse()
 
 				if mActiveTool.OnViewChanged then
 					mActiveTool.OnViewChanged(createToolContext())
@@ -264,7 +267,7 @@ return function(
 			end
 			if input.UserInputType == Enum.UserInputType.MouseButton1 then
 				mIsMouseDown = true
-				mTarget = raycastFromMouse()
+				mTarget, mTargetNormal = raycastFromMouse()
 				if mActiveTool.OnClicked then
 					mActiveTool.OnClicked(createToolContext())
 				end
@@ -312,6 +315,7 @@ return function(
 			mActiveTool = nil
 			mIsMouseDown = false
 			mTarget = nil
+			mTargetNormal = nil
 			mHighlight.Adornee = nil
 			mHighlight.Enabled = false
 		end
