@@ -325,6 +325,7 @@ return function(
 			-- Re-select the built-in Select tool to work around a Studio bug
 			-- where deactivating a plugin leaves no tool selected
 			plugin:Activate(false)
+			plugin:SelectRibbonTool(Enum.RibbonTool.Select, UDim2.new())
 		end
 	end
 
