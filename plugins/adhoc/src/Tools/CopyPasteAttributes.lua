@@ -9,7 +9,6 @@ local React = require(Packages.React)
 local Colors = require("../PluginGui/Colors")
 local ToolTypes = require("../ToolTypes")
 
-type ToolContext = ToolTypes.ToolContext
 type ToolSettingsProps = ToolTypes.ToolSettingsProps
 
 local e = React.createElement
@@ -92,10 +91,10 @@ local function deserializeAttribute(data: SerializedValue): any
 	end
 end
 
--- Copy all attributes from a part into a serialized set
-local function copyAttributesFromPart(part: BasePart): { [string]: SerializedValue }
+-- Copy all attributes from an instance into a serialized set
+local function copyAttributes(instance: Instance): { [string]: SerializedValue }
 	local attrs: { [string]: SerializedValue } = {}
-	for name, value in part:GetAttributes() do
+	for name, value in instance:GetAttributes() do
 		local serialized = serializeAttribute(value)
 		if serialized ~= nil then
 			attrs[name] = serialized
@@ -104,11 +103,11 @@ local function copyAttributesFromPart(part: BasePart): { [string]: SerializedVal
 	return attrs
 end
 
--- Paste a serialized attribute set onto a part
-local function pasteAttributesOntoPart(part: BasePart, attrs: { [string]: SerializedValue })
+-- Paste a serialized attribute set onto an instance
+local function pasteAttributes(instance: Instance, attrs: { [string]: SerializedValue })
 	for name, data in attrs do
 		local value = deserializeAttribute(data)
-		part:SetAttribute(name, value)
+		instance:SetAttribute(name, value)
 	end
 end
 
@@ -121,7 +120,7 @@ local function countAttributes(attrs: { [string]: SerializedValue }): number
 	return count
 end
 
--- Row component for an attribute set, adapted from SaveCamera's SaveRow
+-- Row component for an attribute set
 local function SetRow(props: {
 	Name: string,
 	AttrCount: number,
@@ -286,22 +285,40 @@ local function CopyPasteAttributesSettings(props: ToolSettingsProps)
 		Padding = UDim.new(0, 4),
 	})
 
-	-- Status text
-	local statusText: string
-	if activeSet == 0 or activeSet > #sets then
-		statusText = "Click a part to copy its attributes"
-	else
-		statusText = "Click to paste: " .. sets[activeSet].Name
-	end
-
-	children.Status = e("TextLabel", {
-		Size = UDim2.new(1, 0, 0, 24),
-		BackgroundTransparency = 1,
-		Text = statusText,
-		TextColor3 = Colors.OFFWHITE,
-		Font = Enum.Font.SourceSansItalic,
-		TextSize = 14,
+	-- "Copy from Selection" button
+	children.CopyButton = e("TextButton", {
+		Size = UDim2.new(1, 0, 0, 30),
+		BackgroundColor3 = Colors.ACTION_BLUE,
+		AutoButtonColor = true,
+		Text = "+ Copy from Selection",
+		TextColor3 = Colors.WHITE,
+		Font = Enum.Font.SourceSansBold,
+		TextSize = 16,
+		BorderSizePixel = 0,
 		LayoutOrder = 1,
+		[React.Event.MouseButton1Click] = function()
+			local selected = Selection:Get()
+			if #selected == 0 then
+				return
+			end
+			-- Copy from the first selected instance
+			local source = selected[1]
+			local attrs = copyAttributes(source)
+			local newSets = table.clone(sets)
+			table.insert(newSets, 1, {
+				Name = source.Name .. " Attributes",
+				Attributes = attrs,
+			})
+			props.SetSetting("Sets", newSets)
+			-- Adjust active set index since we inserted at 1
+			if activeSet > 0 then
+				props.SetSetting("ActiveSet", activeSet + 1)
+			end
+		end,
+	}, {
+		Corner = e("UICorner", {
+			CornerRadius = UDim.new(0, 4),
+		}),
 	})
 
 	-- "Paste to Selection" button (only when a set is active)
@@ -318,13 +335,7 @@ local function CopyPasteAttributesSettings(props: ToolSettingsProps)
 			LayoutOrder = 2,
 			[React.Event.MouseButton1Click] = function()
 				local selected = Selection:Get()
-				local parts: { BasePart } = {}
-				for _, inst in selected do
-					if inst:IsA("BasePart") then
-						table.insert(parts, inst)
-					end
-				end
-				if #parts == 0 then
+				if #selected == 0 then
 					return
 				end
 				local id = ChangeHistoryService:TryBeginRecording("Paste Attributes to Selection")
@@ -332,8 +343,8 @@ local function CopyPasteAttributesSettings(props: ToolSettingsProps)
 					return
 				end
 				local attrs = sets[activeSet].Attributes
-				for _, part in parts do
-					pasteAttributesOntoPart(part, attrs)
+				for _, inst in selected do
+					pasteAttributes(inst, attrs)
 				end
 				ChangeHistoryService:FinishRecording(id, Enum.FinishRecordingOperation.Commit)
 			end,
@@ -364,7 +375,6 @@ local function CopyPasteAttributesSettings(props: ToolSettingsProps)
 			AttrCount = countAttributes(set.Attributes),
 			IsSelected = i == activeSet,
 			OnSelect = function()
-				-- Toggle selection
 				if activeSet == i then
 					props.SetSetting("ActiveSet", 0)
 				else
@@ -380,7 +390,6 @@ local function CopyPasteAttributesSettings(props: ToolSettingsProps)
 			OnDelete = function()
 				local newSets = table.clone(sets)
 				table.remove(newSets, i)
-				-- Adjust active set index
 				if activeSet == i then
 					props.SetSetting("ActiveSet", 0)
 				elseif activeSet > i then
@@ -400,76 +409,15 @@ local function CopyPasteAttributesSettings(props: ToolSettingsProps)
 	}, children)
 end
 
-local mRecordingId: string? = nil
-local mPastedParts: { [BasePart]: boolean } = {}
-
 local CopyPasteAttributes: ToolTypes.ToolDefinition = {
 	Id = "copyPasteAttributes",
 	Name = "Copy Paste Attributes",
-	Description = "Copy and paste attributes between parts",
+	Description = "Copy and paste attributes between instances",
 
 	DefaultSettings = {
 		Sets = {},
 		ActiveSet = 0,
 	},
-
-	OnActivated = function(ctx: ToolContext)
-		mPastedParts = {}
-	end,
-
-	OnDeactivated = function(ctx: ToolContext)
-		mPastedParts = {}
-		ctx.SetHighlight(nil)
-	end,
-
-	OnViewChanged = function(ctx: ToolContext)
-		ctx.SetHighlight(ctx.Target)
-		-- Paint behavior during drag in paste mode
-		local activeSet = ctx.GetSetting("ActiveSet") :: number
-		local sets = ctx.GetSetting("Sets") :: { AttributeSet }
-		if ctx.IsMouseDown and activeSet > 0 and activeSet <= #sets and ctx.Target and not mPastedParts[ctx.Target] then
-			pasteAttributesOntoPart(ctx.Target, sets[activeSet].Attributes)
-			mPastedParts[ctx.Target] = true
-		end
-	end,
-
-	OnClicked = function(ctx: ToolContext)
-		if not ctx.Target then
-			return
-		end
-
-		local activeSet = ctx.GetSetting("ActiveSet") :: number
-		local sets = ctx.GetSetting("Sets") :: { AttributeSet }
-
-		if activeSet == 0 or activeSet > #sets then
-			-- Copy mode: copy attributes from target
-			local attrs = copyAttributesFromPart(ctx.Target)
-			local newSets = table.clone(sets)
-			table.insert(newSets, 1, {
-				Name = ctx.Target.Name .. " Attributes",
-				Attributes = attrs,
-			})
-			ctx.SetSetting("Sets", newSets)
-			-- Auto-select the new set (it's now at index 1)
-			ctx.SetSetting("ActiveSet", 1)
-		else
-			-- Paste mode: paste onto target
-			local id = ctx.BeginRecording("Paste Attributes")
-			if id then
-				mRecordingId = id
-			end
-			pasteAttributesOntoPart(ctx.Target, sets[activeSet].Attributes)
-			mPastedParts = { [ctx.Target] = true }
-		end
-	end,
-
-	OnReleased = function(ctx: ToolContext)
-		if mRecordingId then
-			ctx.FinishRecording(mRecordingId)
-			mRecordingId = nil
-		end
-		mPastedParts = {}
-	end,
 
 	RenderSettings = CopyPasteAttributesSettings,
 }
