@@ -199,15 +199,20 @@ local function ComponentRow(props: {
 })
 	local instances = props.Instances
 	local mRecordingId = React.useRef(nil :: string?)
+	local isDragging = React.useRef(false)
+	local dragValue, setDragValue = React.useState(0)
 
 	-- Read value from first instance (representative)
-	local value = readUDimComponent(instances[1], props.PropertyName, props.Component)
+	local instanceValue = readUDimComponent(instances[1], props.PropertyName, props.Component)
+
+	-- Use drag value for immediate UI feedback while dragging, instance value otherwise
+	local value = if isDragging.current then dragValue else instanceValue
 
 	-- Check for mixed values across multi-selection
 	local isMixed = false
 	for i = 2, #instances do
 		local other = readUDimComponent(instances[i], props.PropertyName, props.Component)
-		if math.abs(other - value) > 0.0001 then
+		if math.abs(other - instanceValue) > 0.0001 then
 			isMixed = true
 			break
 		end
@@ -241,21 +246,22 @@ local function ComponentRow(props: {
 			Max = sliderMax,
 			ValueChanged = function(newValue: number)
 				if props.IsScale then
-					-- Round scale to 3 decimal places during drag
 					newValue = math.round(newValue * 1000) / 1000
 				else
-					-- Round offset to integers during drag
 					newValue = math.round(newValue)
 				end
+				setDragValue(newValue)
 				applyValue(newValue)
 			end,
 			DragStarted = function()
+				isDragging.current = true
 				local id = ChangeHistoryService:TryBeginRecording("Adjust " .. props.PropertyName)
 				if id then
 					mRecordingId.current = id
 				end
 			end,
 			DragEnded = function()
+				isDragging.current = false
 				if mRecordingId.current then
 					ChangeHistoryService:FinishRecording(
 						mRecordingId.current,
