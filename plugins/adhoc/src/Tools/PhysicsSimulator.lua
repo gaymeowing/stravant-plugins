@@ -69,7 +69,12 @@ local mCtx: ToolContext? = nil
 local mUpdateUI: (() -> ())? = nil
 local mSimElapsed = 0
 local mSelectionConnection: RBXScriptConnection? = nil
-local mVelocityArrows: { [BasePart]: ConeHandleAdornment } = {}
+
+-- Trail state
+local kMaxTrailSamples = 31 -- 31 positions = 30 segments
+local mTrailFolder: Folder? = nil
+local mTrailPositions: { [BasePart]: { Vector3 } } = {} -- per-part position history
+local mTrailCylinders: { Instance } = {} -- all trail cylinder instances
 
 -- Drag-while-paused state
 local mDragPart: BasePart? = nil
@@ -121,7 +126,14 @@ local function raycastFromMouse(): (Vector3?, Vector3?, BasePart?)
 	local ray = camera:ViewportPointToRay(mouseLocation.X, mouseLocation.Y)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { mEmitterFolder :: Instance }
+	local excluded: { Instance } = {}
+	if mEmitterFolder then
+		table.insert(excluded, mEmitterFolder)
+	end
+	if mTrailFolder then
+		table.insert(excluded, mTrailFolder)
+	end
+	params.FilterDescendantsInstances = excluded
 	local result = workspace:Raycast(ray.Origin, ray.Direction * 10000, params)
 	if result and result.Instance:IsA("BasePart") then
 		return result.Position, result.Normal, result.Instance
@@ -233,10 +245,14 @@ local function cleanupHighlights()
 		highlight:Destroy()
 	end
 	mHighlights = {}
-	for _, arrow in mVelocityArrows do
-		arrow:Destroy()
+end
+
+local function clearTrail()
+	for _, cyl in mTrailCylinders do
+		cyl:Destroy()
 	end
-	mVelocityArrows = {}
+	mTrailCylinders = {}
+	mTrailPositions = {}
 end
 
 local function setHighlightColor(color: Color3)
@@ -259,38 +275,90 @@ local function setupHighlights()
 			highlight.Adornee = part
 			highlight.Parent = part
 			mHighlights[part] = highlight
-
-			-- Velocity arrow
-			local arrow = Instance.new("ConeHandleAdornment")
-			arrow.Adornee = part
-			arrow.Color3 = Color3.fromRGB(0, 200, 255)
-			arrow.Radius = 0.3
-			arrow.Height = 0
-			arrow.AlwaysOnTop = true
-			arrow.Transparency = 0.3
-			arrow.Parent = part
-			mVelocityArrows[part] = arrow
 		end
 	end
 end
 
-local function updateVelocityArrows()
-	for part, arrow in mVelocityArrows do
-		if part.Parent and arrow.Parent then
-			local velocity = part.AssemblyLinearVelocity
-			local speed = velocity.Magnitude
-			if speed > 0.1 then
-				local dir = velocity.Unit
-				local len = math.min(speed * 0.15, 20)
-				arrow.Height = len
-				arrow.Radius = math.clamp(len * 0.15, 0.2, 0.6)
-				arrow.CFrame = CFrame.lookAt(Vector3.zero, dir) * CFrame.new(0, 0, -len / 2 - 0.5)
-				arrow.Visible = true
+local kTrailColorRed = Color3.fromRGB(255, 50, 50)
+local kTrailColorYellow = Color3.fromRGB(255, 220, 50)
+local kTrailColorGreen = Color3.fromRGB(50, 255, 50)
+local kTrailRadius = 0.1
+
+local function rebuildTrail()
+	-- Destroy old cylinders
+	for _, cyl in mTrailCylinders do
+		cyl:Destroy()
+	end
+	mTrailCylinders = {}
+
+	local folder = mTrailFolder
+	if not folder then
+		return
+	end
+
+	for _, part in mSimulatedParts do
+		local positions = mTrailPositions[part]
+		if not positions or #positions < 2 then
+			continue
+		end
+
+		local segmentCount = #positions - 1
+		for i = 1, segmentCount do
+			local p0 = positions[i]
+			local p1 = positions[i + 1]
+			local delta = p1 - p0
+			local length = delta.Magnitude
+			if length < 0.001 then
+				continue
+			end
+
+			local alpha = (i - 1) / math.max(segmentCount - 1, 1) -- 0 = oldest, 1 = newest
+			-- Red (old) → Yellow (mid) → Green (new)
+			local color: Color3
+			if alpha < 0.5 then
+				color = kTrailColorRed:Lerp(kTrailColorYellow, alpha * 2)
 			else
-				arrow.Visible = false
+				color = kTrailColorYellow:Lerp(kTrailColorGreen, (alpha - 0.5) * 2)
+			end
+			local transparency = 0.7 - alpha * 0.7 -- old=0.7, new=0
+
+			local midpoint = (p0 + p1) / 2
+			local cf = CFrame.lookAt(midpoint, p1)
+
+			local cyl = Instance.new("CylinderHandleAdornment")
+			cyl.Height = length
+			cyl.Radius = kTrailRadius
+			cyl.CFrame = cf
+			cyl.Color3 = color
+			cyl.Transparency = transparency
+			cyl.AlwaysOnTop = false
+			cyl.ZIndex = 1
+			cyl.Adornee = workspace.Terrain
+			cyl.Parent = folder;
+			(cyl :: any).Shading = Enum.AdornShading.XRay
+
+			table.insert(mTrailCylinders, cyl)
+		end
+	end
+end
+
+local function sampleTrail()
+	for _, part in mSimulatedParts do
+		if part.Parent then
+			if not mTrailPositions[part] then
+				mTrailPositions[part] = {}
+			end
+			local positions = mTrailPositions[part]
+			table.insert(positions, part.Position)
+
+			-- Trim oldest positions
+			while #positions > kMaxTrailSamples do
+				table.remove(positions, 1)
 			end
 		end
 	end
+
+	rebuildTrail()
 end
 
 local function setupForces()
@@ -427,8 +495,8 @@ local function startSimulation(ctx: ToolContext)
 		-- Step physics
 		workspace:StepPhysics(dt * speed, mSimulatedParts)
 
-		-- Update velocity arrows
-		updateVelocityArrows()
+		-- Sample trail every frame
+		sampleTrail()
 	end)
 
 	if mUpdateUI then
@@ -496,9 +564,10 @@ local function stopSimulation()
 	end
 	mOriginalAnchored = {}
 
-	-- Clean up forces and highlights
+	-- Clean up forces, highlights, and trail
 	cleanupForces()
 	cleanupHighlights()
+	clearTrail()
 
 	-- Finish recording
 	if mRecordingId then
@@ -965,6 +1034,12 @@ local PhysicsSimulator: ToolTypes.ToolDefinition = {
 		folder.Name = "PhysicsSimulatorEmitters"
 		folder.Parent = workspace
 		mEmitterFolder = folder
+
+		-- Create trail container folder
+		local trailFolder = Instance.new("Folder")
+		trailFolder.Name = "PhysicsSimulatorTrail"
+		trailFolder.Parent = workspace
+		mTrailFolder = trailFolder
 	end,
 
 	OnDeactivated = function(ctx: ToolContext)
@@ -978,6 +1053,13 @@ local PhysicsSimulator: ToolTypes.ToolDefinition = {
 		if mEmitterFolder then
 			mEmitterFolder:Destroy()
 			mEmitterFolder = nil
+		end
+
+		-- Destroy trail folder
+		clearTrail()
+		if mTrailFolder then
+			mTrailFolder:Destroy()
+			mTrailFolder = nil
 		end
 
 		-- Disconnect selection tracking
