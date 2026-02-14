@@ -280,7 +280,7 @@ local function SwatchRow(props: {
 				FlexMode = Enum.UIFlexMode.Grow,
 			}),
 		}),
-		HexLabel = e("TextLabel", {
+		HexLabel = e("TextBox", {
 			Size = UDim2.fromOffset(62, 28),
 			BackgroundTransparency = 1,
 			Text = hex,
@@ -288,6 +288,8 @@ local function SwatchRow(props: {
 			Font = Enum.Font.Code,
 			TextSize = 14,
 			TextXAlignment = Enum.TextXAlignment.Center,
+			TextEditable = false,
+			ClearTextOnFocus = false,
 			LayoutOrder = 2,
 		}),
 		LockButton = e("TextButton", {
