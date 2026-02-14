@@ -132,25 +132,21 @@ end
 
 local function createArrow(part: BasePart, normalId: Enum.NormalId): ConeHandleAdornment
 	local arrow = Instance.new("ConeHandleAdornment")
-	arrow.Adornee = part
+	arrow.Adornee = workspace.Terrain
 	arrow.Color3 = Color3.fromRGB(0, 162, 255)
 	arrow.AlwaysOnTop = true
 	arrow.Height = 1.5
 	arrow.Radius = 0.4
 
-	-- Position the cone on the face surface, pointing outward.
-	-- ConeHandleAdornment extends along the +Y of its CFrame (relative to adornee).
+	-- ConeHandleAdornment points along -Z (LookVector) of its CFrame.
+	-- CFrame is world-space when adorned to Terrain.
 	local normal = NORMAL_ID_VECTORS[normalId]
 	local faceOffset = sizeAlongNormal(part.Size, normalId) / 2
-	local pos = normal * (faceOffset + arrow.Height / 2)
+	local worldNormal = part.CFrame:VectorToWorldSpace(normal)
+	local worldPos = part.Position + worldNormal * faceOffset
 
-	-- Build a CFrame where +Y = normal direction (object space)
-	local helper = if math.abs(normal.Y) < 0.9 then Vector3.yAxis else Vector3.xAxis
-	local right = normal:Cross(helper).Unit
-	local forward = right:Cross(normal)
-	arrow.CFrame = CFrame.fromMatrix(pos, right, normal, -forward)
-
-	arrow.Parent = part
+	arrow.CFrame = CFrame.lookAt(worldPos, worldPos + worldNormal)
+	arrow.Parent = workspace.Terrain
 	return arrow
 end
 
