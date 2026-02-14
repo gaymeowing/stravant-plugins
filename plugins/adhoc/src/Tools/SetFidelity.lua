@@ -39,12 +39,14 @@ local function EnumPicker(props: {
 		FillDirection = Enum.FillDirection.Horizontal,
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Padding = UDim.new(0, 2),
+		Wraps = true,
 	})
 
 	for i, option in props.Options do
 		local isSelected = option == props.Value
 		buttons[option] = e("TextButton", {
-			Size = UDim2.new(0, 0, 1, 0),
+			Size = UDim2.new(0, 0, 0, 26),
+			AutomaticSize = Enum.AutomaticSize.X,
 			BackgroundColor3 = if isSelected then Colors.ACTION_BLUE else Colors.GREY,
 			AutoButtonColor = not isSelected,
 			Text = option,
@@ -60,12 +62,9 @@ local function EnumPicker(props: {
 			Corner = e("UICorner", {
 				CornerRadius = UDim.new(0, 4),
 			}),
-			Flex = e("UIFlexItem", {
-				FlexMode = Enum.UIFlexMode.Grow,
-			}),
 			Padding = e("UIPadding", {
-				PaddingLeft = UDim.new(0, 4),
-				PaddingRight = UDim.new(0, 4),
+				PaddingLeft = UDim.new(0, 6),
+				PaddingRight = UDim.new(0, 6),
 			}),
 		})
 	end
@@ -91,7 +90,8 @@ local function EnumPicker(props: {
 			LayoutOrder = 1,
 		}),
 		Buttons = e("Frame", {
-			Size = UDim2.new(1, 0, 0, 26),
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
 			BackgroundTransparency = 1,
 			LayoutOrder = 2,
 		}, buttons),
@@ -130,33 +130,62 @@ local function SetFidelitySettings(props: ToolSettingsProps)
 			end,
 			LayoutOrder = 2,
 		}),
-		ApplyButton = e("TextButton", {
+		ApplyRenderButton = e("TextButton", {
 			Size = UDim2.new(1, 0, 0, 30),
 			BackgroundColor3 = Colors.ACTION_BLUE,
 			AutoButtonColor = true,
-			Text = "Apply to All Parts",
+			Text = "Apply RenderFidelity to All",
 			TextColor3 = Colors.WHITE,
 			Font = Enum.Font.SourceSansBold,
 			TextSize = 16,
 			BorderSizePixel = 0,
 			LayoutOrder = 3,
 			[React.Event.MouseButton1Click] = function()
-				local id = ChangeHistoryService:TryBeginRecording("Set Fidelity")
+				local id = ChangeHistoryService:TryBeginRecording("Set RenderFidelity")
 				if not id then
 					return
 				end
 				local renderEnum = (Enum.RenderFidelity :: any)[renderFidelity]
-				local collisionEnum = (Enum.CollisionFidelity :: any)[collisionFidelity]
 				local count = 0
 				for _, desc in workspace:GetDescendants() do
 					if desc:IsA("TriangleMeshPart") or desc:IsA("PartOperation") then
 						desc.RenderFidelity = renderEnum
+						count += 1
+					end
+				end
+				ChangeHistoryService:FinishRecording(id, Enum.FinishRecordingOperation.Commit)
+				print("[SetFidelity] Set RenderFidelity on " .. count .. " parts")
+			end,
+		}, {
+			Corner = e("UICorner", {
+				CornerRadius = UDim.new(0, 4),
+			}),
+		}),
+		ApplyCollisionButton = e("TextButton", {
+			Size = UDim2.new(1, 0, 0, 30),
+			BackgroundColor3 = Colors.ACTION_BLUE,
+			AutoButtonColor = true,
+			Text = "Apply CollisionFidelity to All",
+			TextColor3 = Colors.WHITE,
+			Font = Enum.Font.SourceSansBold,
+			TextSize = 16,
+			BorderSizePixel = 0,
+			LayoutOrder = 4,
+			[React.Event.MouseButton1Click] = function()
+				local id = ChangeHistoryService:TryBeginRecording("Set CollisionFidelity")
+				if not id then
+					return
+				end
+				local collisionEnum = (Enum.CollisionFidelity :: any)[collisionFidelity]
+				local count = 0
+				for _, desc in workspace:GetDescendants() do
+					if desc:IsA("TriangleMeshPart") or desc:IsA("PartOperation") then
 						desc.CollisionFidelity = collisionEnum
 						count += 1
 					end
 				end
 				ChangeHistoryService:FinishRecording(id, Enum.FinishRecordingOperation.Commit)
-				print("[SetFidelity] Updated " .. count .. " parts")
+				print("[SetFidelity] Set CollisionFidelity on " .. count .. " parts")
 			end,
 		}, {
 			Corner = e("UICorner", {
