@@ -100,8 +100,9 @@ local function doBevel(part: BasePart, radius: number)
 	model.Name = part.Name
 
 	-- 3 Slabs (overlapping cross, centered at part position)
-	-- Full width, inset height and depth
-	createSlab(model, part, cf, Vector3.new(W, H - 2 * R, D - 2 * R))
+	-- Reuse the original part as the first slab so its children stay on it
+	applyProperties(part, part)
+	part.Size = Vector3.new(W, H - 2 * R, D - 2 * R)
 	-- Full height, inset width and depth
 	createSlab(model, part, cf, Vector3.new(W - 2 * R, H, D - 2 * R))
 	-- Full depth, inset width and height
@@ -158,19 +159,10 @@ local function doBevel(part: BasePart, radius: number)
 		end
 	end
 
-	-- Set the primary part to the first slab for easy positioning
-	model.PrimaryPart = model:GetChildren()[1] :: BasePart
-
-	-- Reparent original part's children into the model
-	for _, child in part:GetChildren() do
-		child.Parent = model
-	end
-
-	-- Place model where the original part was
+	-- Place model where the original part was, with the original part inside it
 	model.Parent = part.Parent
-
-	-- Destroy original part
-	part:Destroy()
+	model.PrimaryPart = part
+	part.Parent = model
 
 	return model
 end
