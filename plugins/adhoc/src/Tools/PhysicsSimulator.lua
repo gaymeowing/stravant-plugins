@@ -69,10 +69,48 @@ local mCtx: ToolContext? = nil
 local mUpdateUI: (() -> ())? = nil
 local mSimElapsed = 0
 local mSelectionConnection: RBXScriptConnection? = nil
+local mVelocityArrows: { [BasePart]: ConeHandleAdornment } = {}
+
+-- Drag-while-paused state
+local mDragPart: BasePart? = nil
+local mDragPlaneNormal: Vector3 = Vector3.zAxis
+local mDragPlanePoint: Vector3 = Vector3.zero
+local mDragPartOffset: Vector3 = Vector3.zero
 
 --------------------------------------------------------------------------------
 -- Helpers
 --------------------------------------------------------------------------------
+
+local function getRayFromMouse(): (Vector3, Vector3)
+	local camera = workspace.CurrentCamera
+	local mouseLocation = UserInputService:GetMouseLocation()
+	local ray = camera:ViewportPointToRay(mouseLocation.X, mouseLocation.Y)
+	return ray.Origin, ray.Direction
+end
+
+local function rayPlaneIntersect(
+	rayOrigin: Vector3, rayDir: Vector3,
+	planePoint: Vector3, planeNormal: Vector3
+): Vector3?
+	local denom = rayDir:Dot(planeNormal)
+	if math.abs(denom) < 0.0001 then
+		return nil
+	end
+	local t = (planePoint - rayOrigin):Dot(planeNormal) / denom
+	if t < 0 then
+		return nil
+	end
+	return rayOrigin + rayDir * t
+end
+
+local function isSimulatedPart(part: BasePart): boolean
+	for _, p in mSimulatedParts do
+		if p == part then
+			return true
+		end
+	end
+	return false
+end
 
 local function raycastFromMouse(): (Vector3?, Vector3?, BasePart?)
 	local camera = workspace.CurrentCamera
@@ -195,6 +233,10 @@ local function cleanupHighlights()
 		highlight:Destroy()
 	end
 	mHighlights = {}
+	for _, arrow in mVelocityArrows do
+		arrow:Destroy()
+	end
+	mVelocityArrows = {}
 end
 
 local function setHighlightColor(color: Color3)
@@ -217,6 +259,36 @@ local function setupHighlights()
 			highlight.Adornee = part
 			highlight.Parent = part
 			mHighlights[part] = highlight
+
+			-- Velocity arrow
+			local arrow = Instance.new("ConeHandleAdornment")
+			arrow.Adornee = part
+			arrow.Color3 = Color3.fromRGB(0, 200, 255)
+			arrow.Radius = 0.3
+			arrow.Height = 0
+			arrow.AlwaysOnTop = true
+			arrow.Transparency = 0.3
+			arrow.Parent = part
+			mVelocityArrows[part] = arrow
+		end
+	end
+end
+
+local function updateVelocityArrows()
+	for part, arrow in mVelocityArrows do
+		if part.Parent and arrow.Parent then
+			local velocity = part.AssemblyLinearVelocity
+			local speed = velocity.Magnitude
+			if speed > 0.1 then
+				local dir = velocity.Unit
+				local len = math.min(speed * 0.15, 20)
+				arrow.Height = len
+				arrow.Radius = math.clamp(len * 0.15, 0.2, 0.6)
+				arrow.CFrame = CFrame.lookAt(Vector3.zero, dir) * CFrame.new(0, 0, -len / 2 - 0.5)
+				arrow.Visible = true
+			else
+				arrow.Visible = false
+			end
 		end
 	end
 end
@@ -354,6 +426,9 @@ local function startSimulation(ctx: ToolContext)
 
 		-- Step physics
 		workspace:StepPhysics(dt * speed, mSimulatedParts)
+
+		-- Update velocity arrows
+		updateVelocityArrows()
 	end)
 
 	if mUpdateUI then
@@ -386,6 +461,7 @@ local function resumeSimulation()
 		return
 	end
 	mSimState = "running"
+	mDragPart = nil
 
 	-- Unanchor parts again
 	for _, part in mSimulatedParts do
@@ -916,14 +992,43 @@ local PhysicsSimulator: ToolTypes.ToolDefinition = {
 	end,
 
 	OnViewChanged = function(ctx: ToolContext)
-		-- Show hover highlight when stopped
 		if mSimState == "stopped" then
 			ctx.SetHighlight(ctx.Target)
+		elseif mSimState == "paused" and mDragPart then
+			-- Drag part on view plane
+			local camera = workspace.CurrentCamera
+			if camera then
+				local rayOrigin, rayDir = getRayFromMouse()
+				local hit = rayPlaneIntersect(rayOrigin, rayDir * 10000, mDragPlanePoint, mDragPlaneNormal)
+				if hit then
+					mDragPart.Position = hit + mDragPartOffset
+				end
+			end
 		end
 	end,
 
 	OnClicked = function(ctx: ToolContext)
+		if mSimState == "paused" then
+			-- Check if clicking a simulated part to drag it
+			local hitPos, hitNormal, hitPart = raycastFromMouse()
+			if hitPart and isSimulatedPart(hitPart) then
+				local camera = workspace.CurrentCamera
+				if camera and hitPos then
+					mDragPart = hitPart
+					mDragPlaneNormal = camera.CFrame.LookVector
+					mDragPlanePoint = hitPart.Position
+					mDragPartOffset = hitPart.Position - hitPos
+				end
+				return
+			end
+		end
 		placeEmitter(ctx)
+	end,
+
+	OnReleased = function(ctx: ToolContext)
+		if mDragPart then
+			mDragPart = nil
+		end
 	end,
 
 	RenderSettings = PhysicsSimulatorSettings,
