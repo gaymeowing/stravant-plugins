@@ -137,10 +137,19 @@ local function createArrow(part: BasePart, normalId: Enum.NormalId): ConeHandleA
 	arrow.AlwaysOnTop = true
 	arrow.Height = 1.5
 	arrow.Radius = 0.4
-	arrow.NormalId = normalId
-	-- Offset so the cone sits on the face surface
+
+	-- Position the cone on the face surface, pointing outward.
+	-- ConeHandleAdornment extends along the +Y of its CFrame (relative to adornee).
+	local normal = NORMAL_ID_VECTORS[normalId]
 	local faceOffset = sizeAlongNormal(part.Size, normalId) / 2
-	arrow.Offset = NORMAL_ID_VECTORS[normalId] * (faceOffset + arrow.Height / 2)
+	local pos = normal * (faceOffset + arrow.Height / 2)
+
+	-- Build a CFrame where +Y = normal direction (object space)
+	local helper = if math.abs(normal.Y) < 0.9 then Vector3.yAxis else Vector3.xAxis
+	local right = normal:Cross(helper).Unit
+	local forward = right:Cross(normal)
+	arrow.CFrame = CFrame.fromMatrix(pos, right, normal, -forward)
+
 	arrow.Parent = part
 	return arrow
 end
