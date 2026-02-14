@@ -237,7 +237,7 @@ end
 
 local RotateSelection: ToolTypes.ToolDefinition = {
 	Id = "rotateSelection",
-	Name = "Rotate Selection",
+	Name = "Rotate Each Part",
 	Description = "Rotate multiple parts around their individual pivot points using drag handles.",
 
 	OnActivated = function(ctx)

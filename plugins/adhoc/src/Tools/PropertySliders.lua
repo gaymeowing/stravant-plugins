@@ -482,8 +482,8 @@ end
 
 local PropertySliders: ToolTypes.ToolDefinition = {
 	Id = "propertySliders",
-	Name = "Property Sliders",
-	Description = "Slider controls for UDim and UDim2 properties",
+	Name = "UDim Property Sliders",
+	Description = "Slider controls for UDim and UDim2 properties on selected UI objects",
 
 	RenderSettings = PropertySlidersSettings,
 }

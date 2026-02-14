@@ -10,7 +10,7 @@ local mSelectedParts: { [BasePart]: boolean } = {}
 
 local PaintSelection: ToolTypes.ToolDefinition = {
 	Id = "paintSelection",
-	Name = "Paint Selection",
+	Name = "Paint to Select",
 	Description = "Click and drag to add parts under the cursor to the selection",
 
 	OnActivated = function(ctx: ToolContext)

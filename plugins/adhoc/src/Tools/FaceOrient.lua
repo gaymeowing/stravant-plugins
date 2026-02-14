@@ -188,7 +188,7 @@ end
 
 local FaceOrient: ToolTypes.ToolDefinition = {
 	Id = "faceOrient",
-	Name = "Face Orient",
+	Name = "Reorient Part Faces",
 	Description = "Reorient a part by choosing front and up faces",
 
 	OnActivated = function(ctx: ToolContext)

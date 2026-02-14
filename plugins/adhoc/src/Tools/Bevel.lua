@@ -361,7 +361,7 @@ end
 
 local Bevel: ToolTypes.ToolDefinition = {
 	Id = "bevel",
-	Name = "Bevel",
+	Name = "Bevel Edges",
 	Description = "Replace a part with a rounded-edge model",
 
 	DefaultSettings = {

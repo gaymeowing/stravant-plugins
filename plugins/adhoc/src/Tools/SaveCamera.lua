@@ -240,7 +240,7 @@ end
 
 local SaveCamera: ToolTypes.ToolDefinition = {
 	Id = "saveCamera",
-	Name = "Save Camera",
+	Name = "Camera Bookmarks",
 	Description = "Save and restore camera positions",
 
 	DefaultSettings = {
