@@ -15,8 +15,11 @@ local function isBevelablePart(part: BasePart?): boolean
 	if not part then
 		return false
 	end
-	if part:IsA("Part") and (part :: Part).Shape == Enum.PartType.Block then
-		return true
+	if part:IsA("Part") then
+		local shape = (part :: Part).Shape
+		if shape == Enum.PartType.Block or shape == Enum.PartType.Wedge then
+			return true
+		end
 	end
 	if part:IsA("WedgePart") or part:IsA("CornerWedgePart") then
 		return true
@@ -329,11 +332,17 @@ end
 -- Dispatcher
 --------------------------------------------------------------------------------
 
+local function isWedgeShape(part: BasePart): boolean
+	if part:IsA("WedgePart") then return true end
+	if part:IsA("Part") and (part :: Part).Shape == Enum.PartType.Wedge then return true end
+	return false
+end
+
 local function doBevel(part: BasePart, radius: number)
 	local W, H, D = part.Size.X, part.Size.Y, part.Size.Z
 	local maxR: number
 
-	if part:IsA("WedgePart") then
+	if isWedgeShape(part) then
 		local L = math.sqrt(D * D + H * H)
 		maxR = math.min(W / 2, H * D / (D + H + L))
 	elseif part:IsA("CornerWedgePart") then
@@ -345,7 +354,7 @@ local function doBevel(part: BasePart, radius: number)
 
 	local R = math.clamp(radius, 0.01, maxR)
 
-	if part:IsA("WedgePart") then
+	if isWedgeShape(part) then
 		doBevelWedge(part, R)
 	elseif part:IsA("CornerWedgePart") then
 		doBevelCornerWedge(part, R)
