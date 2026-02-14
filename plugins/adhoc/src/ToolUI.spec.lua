@@ -14,14 +14,25 @@ local e = React.createElement
 return function(t: TestTypes.TestContext)
 	-- Discover all tools the same way main.lua does
 	local allTools: { ToolDefinition } = {}
+	local loadErrors: { string } = {}
 	for _, module in script.Parent.Tools:GetChildren() do
 		if module:IsA("ModuleScript") then
-			local tool = require(module) :: ToolDefinition
-			table.insert(allTools, tool)
+			local ok, tool = pcall(require, module)
+			if not ok then
+				table.insert(loadErrors, `{module.Name}: {tool}`)
+			else
+				table.insert(allTools, tool :: ToolDefinition)
+			end
 		end
 	end
 	table.sort(allTools, function(a, b)
 		return a.Name < b.Name
+	end)
+
+	t.test("all tools load without errors", function()
+		if #loadErrors > 0 then
+			t.fail("Tool load errors:\n" .. table.concat(loadErrors, "\n"))
+		end
 	end)
 
 	t.test("discovers at least one tool", function()
@@ -63,11 +74,18 @@ return function(t: TestTypes.TestContext)
 				local root = ReactRoblox.createRoot(screenGui)
 				root:render(e(tool.RenderSettings :: any, props))
 
-				-- Let React process the render
-				task.wait()
+				-- Let React process the render (may need multiple frames)
+				local rendered = false
+				for _ = 1, 10 do
+					task.wait()
+					if #screenGui:GetChildren() > 0 then
+						rendered = true
+						break
+					end
+				end
 
 				-- Verify something was rendered
-				t.expect(#screenGui:GetChildren() > 0).toBe(true)
+				t.expect(rendered).toBe(true)
 
 				-- Cleanup
 				root:unmount()

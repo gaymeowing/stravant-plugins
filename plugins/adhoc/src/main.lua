@@ -123,6 +123,7 @@ return function(
 		local tool = assert(mActiveTool, "No active tool")
 		local toolId = tool.Id
 		return {
+			Plugin = plugin,
 			Target = mTarget,
 			IsMouseDown = mIsMouseDown,
 			GetSetting = function(key: string): any

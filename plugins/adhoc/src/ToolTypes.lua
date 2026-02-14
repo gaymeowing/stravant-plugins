@@ -1,6 +1,7 @@
 --!strict
 
 export type ToolContext = {
+	Plugin: Plugin,
 	Target: BasePart?,
 	IsMouseDown: boolean,
 	GetSetting: (key: string) -> any,

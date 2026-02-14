@@ -8,8 +8,6 @@
 
 - A big ol button that adds a model of the Snowflake Eyes limited face to the game (snowflake eyes hype hype hype)
 
-- I'd like to be able to rotate multiple parts at once around their individual pivot points. (probably use the rotate handles from DraggerFramework)
-
 - (large) How about a physics-related tool where you use StepPhysics and DragDetectors (or pseudo ones) to place objects with an interface like so:
     A start simulation button that turns into a stop simulation button,
     An input box that determines the speed of the simulation,
