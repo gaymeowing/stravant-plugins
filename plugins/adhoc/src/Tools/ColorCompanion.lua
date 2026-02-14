@@ -23,7 +23,7 @@ local function colorToHex(r: number, g: number, b: number): string
 	return string.format("#%02X%02X%02X", math.round(r * 255), math.round(g * 255), math.round(b * 255))
 end
 
-local function hexToColor(hex: string): (number, number, number)?
+local function hexToColor(hex: string): (number?, number?, number?)
 	hex = hex:gsub("^#", "")
 	if #hex == 3 then
 		hex = hex:sub(1, 1):rep(2) .. hex:sub(2, 2):rep(2) .. hex:sub(3, 3):rep(2)
