@@ -21,7 +21,7 @@ local function isBevelablePart(part: BasePart?): boolean
 			return true
 		end
 	end
-	if part:IsA("WedgePart") or part:IsA("CornerWedgePart") then
+	if part:IsA("WedgePart") then
 		return true
 	end
 	return false
@@ -199,21 +199,60 @@ local function doBevelWedge(part: BasePart, R: number)
 	local model = Instance.new("Model")
 	model.Name = part.Name
 
-	-- Body: slab 1 = original part inset from left/right
-	applyProperties(part, part)
-	part.Size = Vector3.new(W - 2 * R, H, D)
-
-	-- Body: slab 2 = eroded wedge (inset from bottom/back/slope, full width)
+	-- Eroded wedge dimensions (inset from bottom, back, slope by R)
 	local He = H - R * (D + H + L) / D
 	local De = D - R * (H + D + L) / H
+
+	-- Body: reuse original part as eroded wedge at full width (covers left/right faces)
+	applyProperties(part, part)
 	if He > 0.01 and De > 0.01 then
 		local yOff = R * (D - H - L) / (2 * D)
 		local zOff = R * (D + L - H) / (2 * H)
-		local wp = Instance.new("WedgePart")
-		wp.Size = Vector3.new(W, He, De)
-		wp.CFrame = cf * CFrame.new(0, yOff, zOff)
-		applyProperties(wp, part)
-		wp.Parent = model
+		part.Size = Vector3.new(W, He, De)
+		part.CFrame = cf * CFrame.new(0, yOff, zOff)
+	else
+		part.Size = Vector3.new(0.01, 0.01, 0.01)
+		part.Transparency = 1
+	end
+
+	-- Offset vertex Y/Z coordinates (sphere center positions)
+	local botY = -H / 2 + R                        -- bottom sphere y
+	local backZ = D / 2 - R                         -- back sphere z
+	local slopeFrontZ = -D / 2 + R * (D + L) / H   -- slope-bottom sphere z
+	local slopeBackY = H / 2 - R * (H + L) / D     -- slope-back sphere y
+
+	-- Bottom box slab
+	local bottomDepth = backZ - slopeFrontZ -- = De
+	if bottomDepth > 0.01 then
+		createBlock(model, part,
+			cf * CFrame.new(0, -H / 2 + R / 2, (slopeFrontZ + backZ) / 2),
+			Vector3.new(W - 2 * R, R, bottomDepth))
+	end
+
+	-- Back box slab
+	local backHeight = slopeBackY - botY -- = He
+	if backHeight > 0.01 then
+		createBlock(model, part,
+			cf * CFrame.new(0, (botY + slopeBackY) / 2, D / 2 - R / 2),
+			Vector3.new(W - 2 * R, backHeight, R))
+	end
+
+	-- Slope box slab (rotated block along the slope surface)
+	local slopeLen = math.sqrt(He * He + De * De)
+	if slopeLen > 0.01 then
+		-- Midpoint of slope sphere centers, offset R/2 outward toward slope face
+		local midY = (botY + slopeBackY) / 2 + (D / L) * R / 2
+		local midZ = (slopeFrontZ + backZ) / 2 + (-H / L) * R / 2
+
+		-- CFrame: X = part X, Y = slope outward normal
+		local slopeNormal = Vector3.new(0, D / L, -H / L)
+		local worldPos = cf:PointToWorldSpace(Vector3.new(0, midY, midZ))
+		local worldRight = cf.RightVector
+		local worldUp = cf:VectorToWorldSpace(slopeNormal)
+
+		createBlock(model, part,
+			CFrame.fromMatrix(worldPos, worldRight, worldUp),
+			Vector3.new(W - 2 * R, R, slopeLen))
 	end
 
 	-- Face planes
@@ -260,75 +299,6 @@ local function doBevelWedge(part: BasePart, R: number)
 end
 
 --------------------------------------------------------------------------------
--- CornerWedge bevel
---------------------------------------------------------------------------------
-
-local function doBevelCornerWedge(part: BasePart, R: number)
-	local W, H, D = part.Size.X, part.Size.Y, part.Size.Z
-	local Lf = math.sqrt(D * D + H * H) -- front-slope hypotenuse
-	local Ml = math.sqrt(H * H + W * W) -- left-slope hypotenuse
-	local cf = part.CFrame
-	local model = Instance.new("Model")
-	model.Name = part.Name
-
-	-- Body: slab 1 = original part with bottom inset by R
-	applyProperties(part, part)
-	part.Size = Vector3.new(W, H - R, D)
-	part.CFrame = cf * CFrame.new(0, R / 2, 0)
-
-	-- Body: slab 2 = corner wedge inset from back and right
-	if W - R > 0.01 and D - R > 0.01 then
-		local cwp = Instance.new("CornerWedgePart")
-		cwp.Size = Vector3.new(W - R, H, D - R)
-		cwp.CFrame = cf * CFrame.new(-R / 2, 0, -R / 2)
-		applyProperties(cwp, part)
-		cwp.Parent = model
-	end
-
-	-- Face planes
-	-- CornerWedgePart vertices:
-	-- V1=(-W/2,-H/2,-D/2), V2=(W/2,-H/2,-D/2), V3=(-W/2,-H/2,D/2),
-	-- V4=(W/2,-H/2,D/2), V5=(W/2,H/2,D/2)
-	local nFrontSlope = Vector3.new(0, D, -H) / Lf
-	local nLeftSlope = Vector3.new(-H, W, 0) / Ml
-	local faces: { FacePlane } = {
-		{ n = Vector3.new(0, -1, 0), d = H / 2 },  -- 1: bottom
-		{ n = Vector3.new(0, 0, 1), d = D / 2 },   -- 2: back
-		{ n = Vector3.new(1, 0, 0), d = W / 2 },   -- 3: right
-		{ n = nFrontSlope, d = 0 },                 -- 4: front-slope
-		{ n = nLeftSlope, d = 0 },                  -- 5: left-slope
-	}
-
-	-- 5 vertices: {face1, face2, face3}
-	-- V5 has 4 adjacent faces; pick back/right/front-slope for the sphere
-	local vertexFaces = {
-		{ 1, 4, 5 }, -- V1: bottom, front-slope, left-slope
-		{ 1, 3, 4 }, -- V2: bottom, right, front-slope
-		{ 1, 2, 5 }, -- V3: bottom, back, left-slope
-		{ 1, 2, 3 }, -- V4: bottom, back, right
-		{ 2, 3, 4 }, -- V5: back, right, front-slope (omit left-slope)
-	}
-
-	-- 8 edges: {vertex1, vertex2}
-	local edges = {
-		{ 1, 2 }, -- bottom-front (X)
-		{ 3, 4 }, -- bottom-back (X)
-		{ 1, 3 }, -- bottom-left (Z)
-		{ 2, 4 }, -- bottom-right (Z)
-		{ 4, 5 }, -- back-right vertical (Y)
-		{ 2, 5 }, -- right front-slope diagonal (YZ at x=W/2)
-		{ 3, 5 }, -- back left-slope diagonal (XY at z=D/2)
-		{ 1, 5 }, -- main diagonal (XYZ)
-	}
-
-	createEdgesAndCorners(model, part, cf, faces, vertexFaces, edges, R)
-
-	model.Parent = part.Parent
-	model.PrimaryPart = part
-	part.Parent = model
-end
-
---------------------------------------------------------------------------------
 -- Dispatcher
 --------------------------------------------------------------------------------
 
@@ -338,6 +308,7 @@ local function isWedgeShape(part: BasePart): boolean
 	return false
 end
 
+
 local function doBevel(part: BasePart, radius: number)
 	local W, H, D = part.Size.X, part.Size.Y, part.Size.Z
 	local maxR: number
@@ -345,9 +316,6 @@ local function doBevel(part: BasePart, radius: number)
 	if isWedgeShape(part) then
 		local L = math.sqrt(D * D + H * H)
 		maxR = math.min(W / 2, H * D / (D + H + L))
-	elseif part:IsA("CornerWedgePart") then
-		local Lf = math.sqrt(D * D + H * H)
-		maxR = math.min(W / 2, H / 2, D / 2, H * D / (D + H + Lf))
 	else
 		maxR = math.min(W, H, D) / 2
 	end
@@ -356,8 +324,6 @@ local function doBevel(part: BasePart, radius: number)
 
 	if isWedgeShape(part) then
 		doBevelWedge(part, R)
-	elseif part:IsA("CornerWedgePart") then
-		doBevelCornerWedge(part, R)
 	else
 		doBevelBlock(part, R)
 	end
