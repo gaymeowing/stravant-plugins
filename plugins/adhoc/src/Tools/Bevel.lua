@@ -101,7 +101,7 @@ local function createCylinderBetween(
 	local fwd = worldDir:Cross(helper).Unit
 	local up = fwd:Cross(worldDir).Unit
 
-	createCylinder(model, source, CFrame.fromMatrix(worldMid, worldDir, up, -fwd), length, radius)
+	createCylinder(model, source, CFrame.fromMatrix(worldMid, worldDir, up), length, radius)
 end
 
 -- Given face planes, vertex->face mappings, and edge->vertex mappings,
