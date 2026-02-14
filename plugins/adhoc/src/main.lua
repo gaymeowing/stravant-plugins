@@ -76,14 +76,21 @@ return function(
 	local mTargetNormal: Vector3? = nil
 	local mRecordingId: string? = nil
 
-	-- Highlight for hover preview
-	local mHighlight: Highlight = Instance.new("Highlight")
-	mHighlight.FillTransparency = 0.75
-	mHighlight.OutlineTransparency = 0
-	mHighlight.FillColor = Color3.fromRGB(0, 120, 255)
-	mHighlight.OutlineColor = Color3.fromRGB(0, 120, 255)
-	mHighlight.Enabled = false
-	mHighlight.Parent = workspace
+	-- Highlight for hover preview (created lazily, only parented when in use)
+	local mHighlight: Highlight? = nil
+
+	local function getHighlight(): Highlight
+		if not mHighlight then
+			local h = Instance.new("Highlight")
+			h.FillTransparency = 0.75
+			h.OutlineTransparency = 0
+			h.FillColor = Color3.fromRGB(0, 120, 255)
+			h.OutlineColor = Color3.fromRGB(0, 120, 255)
+			h.Enabled = false
+			mHighlight = h
+		end
+		return mHighlight
+	end
 
 	local reactRoot: ReactRoblox.RootType? = nil
 
@@ -137,11 +144,14 @@ return function(
 			end,
 			SetHighlight = function(part: BasePart?)
 				if part then
-					mHighlight.Adornee = part
-					mHighlight.Enabled = true
-				else
+					local highlight = getHighlight()
+					highlight.Adornee = part
+					highlight.Enabled = true
+					highlight.Parent = workspace
+				elseif mHighlight then
 					mHighlight.Adornee = nil
 					mHighlight.Enabled = false
+					mHighlight.Parent = nil
 				end
 			end,
 			BeginRecording = function(name: string): string?
@@ -238,8 +248,11 @@ return function(
 				mMouseInViewport = false
 				mTarget = nil
 				mTargetNormal = nil
-				mHighlight.Adornee = nil
-				mHighlight.Enabled = false
+				if mHighlight then
+					mHighlight.Adornee = nil
+					mHighlight.Enabled = false
+					mHighlight.Parent = nil
+				end
 				if mActiveTool.OnMouseLeaveViewport then
 					mActiveTool.OnMouseLeaveViewport(createToolContext())
 				end
@@ -320,8 +333,11 @@ return function(
 			mIsMouseDown = false
 			mTarget = nil
 			mTargetNormal = nil
-			mHighlight.Adornee = nil
-			mHighlight.Enabled = false
+			if mHighlight then
+				mHighlight.Adornee = nil
+				mHighlight.Enabled = false
+				mHighlight.Parent = nil
+			end
 			-- Re-select the built-in Select tool to work around a Studio bug
 			-- where deactivating a plugin leaves no tool selected
 			plugin:Activate(false)
@@ -473,7 +489,9 @@ return function(
 			reactRoot:unmount()
 			reactRoot = nil
 		end
-		mHighlight:Destroy()
+		if mHighlight then
+			mHighlight:Destroy()
+		end
 		Settings.Save(plugin, activeSettings)
 		clickedCn:Disconnect()
 	end)
