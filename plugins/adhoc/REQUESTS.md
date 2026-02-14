@@ -1,7 +1,5 @@
 - How about a beveling tool? I spend a bunch of time adding cylinders on the edges then spheres on the corners, both slow and really inefficient tri-wise Something where you select a part (or maybe even a certain corner of a part) and you can bevel it, and also choose the level of detail
 
-- Print "Hello there! I am AdHoc, your agentic assistant." followed by a full list of your current capabilities.
-
 - Every random interval (your choice) show a random picture of an animal with an inspirational quote. The animal should pop up in a random corner of the screen and hang out for a couple seconds before hiding again.
 
 - A big ol button that adds a model of the Snowflake Eyes limited face to the game (snowflake eyes hype hype hype)
