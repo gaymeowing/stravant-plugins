@@ -10,6 +10,74 @@ type ToolSettingsProps = ToolTypes.ToolSettingsProps
 
 local e = React.createElement
 
+--------------------------------------------------------------------------------
+-- Color picker constants (from PaintColor)
+--------------------------------------------------------------------------------
+
+local HUE_GRADIENT = ColorSequence.new({
+	ColorSequenceKeypoint.new(0, Color3.fromHSV(0, 1, 1)),
+	ColorSequenceKeypoint.new(0.167, Color3.fromHSV(0.167, 1, 1)),
+	ColorSequenceKeypoint.new(0.333, Color3.fromHSV(0.333, 1, 1)),
+	ColorSequenceKeypoint.new(0.5, Color3.fromHSV(0.5, 1, 1)),
+	ColorSequenceKeypoint.new(0.667, Color3.fromHSV(0.667, 1, 1)),
+	ColorSequenceKeypoint.new(0.833, Color3.fromHSV(0.833, 1, 1)),
+	ColorSequenceKeypoint.new(1, Color3.fromHSV(0, 1, 1)),
+})
+
+local WHITE_TO_TRANSPARENT = NumberSequence.new({
+	NumberSequenceKeypoint.new(0, 0),
+	NumberSequenceKeypoint.new(1, 1),
+})
+
+local TRANSPARENT_TO_BLACK = NumberSequence.new({
+	NumberSequenceKeypoint.new(0, 1),
+	NumberSequenceKeypoint.new(1, 0),
+})
+
+local function beginPickerDrag(
+	frame: GuiObject,
+	input: InputObject,
+	onUpdate: (relX: number, relY: number) -> ()
+)
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then
+		return
+	end
+
+	local absPos = frame.AbsolutePosition
+	local absSize = frame.AbsoluteSize
+
+	local clickPos = Vector2.new(input.Position.X, input.Position.Y)
+	local startRelX = (clickPos.X - absPos.X) / absSize.X
+	local startRelY = (clickPos.Y - absPos.Y) / absSize.Y
+
+	onUpdate(math.clamp(startRelX, 0, 1), math.clamp(startRelY, 0, 1))
+
+	local panel = frame:FindFirstAncestorWhichIsA("DockWidgetPluginGui")
+	local overlay = Instance.new("TextButton")
+	overlay.Name = "DragOverlay"
+	overlay.Size = UDim2.fromScale(1, 1)
+	overlay.BackgroundTransparency = 1
+	overlay.ZIndex = 1000
+	overlay.Text = ""
+	overlay.Active = true
+	overlay.Parent = panel
+
+	overlay.InputChanged:Connect(function(changedInput)
+		if changedInput.UserInputType == Enum.UserInputType.MouseMovement then
+			local pos = Vector2.new(changedInput.Position.X, changedInput.Position.Y)
+			local relX = (pos.X - absPos.X) / absSize.X
+			local relY = (pos.Y - absPos.Y) / absSize.Y
+			onUpdate(math.clamp(relX, 0, 1), math.clamp(relY, 0, 1))
+		end
+	end)
+
+	input.Changed:Connect(function()
+		if input.UserInputState == Enum.UserInputState.End then
+			overlay:Destroy()
+		end
+	end)
+end
+
 type SwatchData = {
 	Color: { number }, -- {R, G, B} floats 0-1
 	Locked: boolean,
@@ -321,7 +389,17 @@ local function ColorCompanionSettings(props: ToolSettingsProps)
 	local swatchCount = props.GetSetting("SwatchCount") :: number
 	local swatches = props.GetSetting("Swatches") :: { SwatchData }
 
+	local pickerOpen, setPickerOpen = React.useState(false)
 	local hexInputRef = React.useRef(nil :: TextBox?)
+
+	-- Preserve hue in a ref so it doesn't jump to 0 when S or V reaches 0
+	local baseC3 = Color3.new(baseColor[1], baseColor[2], baseColor[3])
+	local h, s, v = baseC3:ToHSV()
+	local hueRef = React.useRef(h)
+	if s > 0.01 and v > 0.01 then
+		hueRef.current = h
+	end
+	local displayHue = hueRef.current
 
 	local function regenerate(newBase: { number }?, newMode: string?, newCount: number?, newSwatches: { SwatchData }?)
 		local b = newBase or baseColor
@@ -338,6 +416,13 @@ local function ColorCompanionSettings(props: ToolSettingsProps)
 		SortOrder = Enum.SortOrder.LayoutOrder,
 		Padding = UDim.new(0, 6),
 	})
+
+	local function setBaseFromHSV(newH: number, newS: number, newV: number)
+		local c = Color3.fromHSV(newH, newS, newV)
+		local newBase = { c.R, c.G, c.B }
+		props.SetSetting("BaseColor", newBase)
+		regenerate(newBase)
+	end
 
 	-- Base color: preview + hex input
 	children.BaseColorSection = e("Frame", {
@@ -361,11 +446,16 @@ local function ColorCompanionSettings(props: ToolSettingsProps)
 			TextXAlignment = Enum.TextXAlignment.Left,
 			LayoutOrder = 1,
 		}),
-		Preview = e("Frame", {
+		Preview = e("TextButton", {
 			Size = UDim2.fromOffset(28, 28),
 			BackgroundColor3 = Color3.new(baseColor[1], baseColor[2], baseColor[3]),
 			BorderSizePixel = 0,
+			AutoButtonColor = false,
+			Text = "",
 			LayoutOrder = 2,
+			[React.Event.MouseButton1Click] = function()
+				setPickerOpen(not pickerOpen)
+			end,
 		}, {
 			Corner = e("UICorner", {
 				CornerRadius = UDim.new(0, 4),
@@ -407,6 +497,108 @@ local function ColorCompanionSettings(props: ToolSettingsProps)
 		}),
 	})
 
+	-- Inline color picker (toggled by clicking the preview swatch)
+	if pickerOpen then
+		children.ColorPicker = e("Frame", {
+			Size = UDim2.new(1, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			BackgroundTransparency = 1,
+			LayoutOrder = 2,
+		}, {
+			Layout = e("UIListLayout", {
+				SortOrder = Enum.SortOrder.LayoutOrder,
+				Padding = UDim.new(0, 4),
+			}),
+			SVPicker = e("TextButton", {
+				Size = UDim2.new(1, 0, 0, 120),
+				BackgroundColor3 = Color3.fromHSV(displayHue, 1, 1),
+				AutoButtonColor = false,
+				Text = "",
+				ClipsDescendants = true,
+				LayoutOrder = 1,
+				[React.Event.InputBegan] = function(rbx: TextButton, input: InputObject)
+					beginPickerDrag(rbx, input, function(relX, relY)
+						setBaseFromHSV(displayHue, relX, 1 - relY)
+					end)
+				end,
+			}, {
+				Corner = e("UICorner", {
+					CornerRadius = UDim.new(0, 4),
+				}),
+				WhiteOverlay = e("Frame", {
+					Size = UDim2.fromScale(1, 1),
+					BackgroundColor3 = Colors.WHITE,
+					BorderSizePixel = 0,
+					ZIndex = 2,
+				}, {
+					Gradient = e("UIGradient", {
+						Transparency = WHITE_TO_TRANSPARENT,
+					}),
+				}),
+				BlackOverlay = e("Frame", {
+					Size = UDim2.fromScale(1, 1),
+					BackgroundColor3 = Colors.BLACK,
+					BorderSizePixel = 0,
+					ZIndex = 3,
+				}, {
+					Gradient = e("UIGradient", {
+						Transparency = TRANSPARENT_TO_BLACK,
+						Rotation = 90,
+					}),
+				}),
+				Marker = e("Frame", {
+					Size = UDim2.fromOffset(12, 12),
+					Position = UDim2.fromScale(s, 1 - v),
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					BackgroundTransparency = 1,
+					ZIndex = 4,
+				}, {
+					UICorner = e("UICorner", {
+						CornerRadius = UDim.new(1, 0),
+					}),
+					Stroke = e("UIStroke", {
+						Color = Colors.WHITE,
+						Thickness = 2,
+					}),
+				}),
+			}),
+			HueBar = e("TextButton", {
+				Size = UDim2.new(1, 0, 0, 20),
+				BackgroundColor3 = Colors.WHITE,
+				AutoButtonColor = false,
+				Text = "",
+				ClipsDescendants = true,
+				LayoutOrder = 2,
+				[React.Event.InputBegan] = function(rbx: TextButton, input: InputObject)
+					beginPickerDrag(rbx, input, function(relX, _relY)
+						hueRef.current = relX
+						setBaseFromHSV(relX, s, v)
+					end)
+				end,
+			}, {
+				Corner = e("UICorner", {
+					CornerRadius = UDim.new(0, 4),
+				}),
+				Gradient = e("UIGradient", {
+					Color = HUE_GRADIENT,
+				}),
+				Marker = e("Frame", {
+					Size = UDim2.new(0, 4, 1, 0),
+					Position = UDim2.fromScale(displayHue, 0.5),
+					AnchorPoint = Vector2.new(0.5, 0.5),
+					BackgroundColor3 = Colors.WHITE,
+					BorderSizePixel = 0,
+					ZIndex = 2,
+				}, {
+					Stroke = e("UIStroke", {
+						Color = Colors.BLACK,
+						Thickness = 1,
+					}),
+				}),
+			}),
+		})
+	end
+
 	-- Mode picker
 	children.ModeLabel = e("TextLabel", {
 		Size = UDim2.new(1, 0, 0, 16),
@@ -416,7 +608,7 @@ local function ColorCompanionSettings(props: ToolSettingsProps)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Font = Enum.Font.SourceSansBold,
 		TextSize = 14,
-		LayoutOrder = 2,
+		LayoutOrder = 3,
 	})
 
 	children.ModePicker = e(ToggleRow, {
@@ -426,7 +618,7 @@ local function ColorCompanionSettings(props: ToolSettingsProps)
 			props.SetSetting("Mode", newMode)
 			regenerate(nil, newMode)
 		end,
-		LayoutOrder = 3,
+		LayoutOrder = 4,
 	})
 
 	-- Swatch count
@@ -438,7 +630,7 @@ local function ColorCompanionSettings(props: ToolSettingsProps)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		Font = Enum.Font.SourceSansBold,
 		TextSize = 14,
-		LayoutOrder = 4,
+		LayoutOrder = 5,
 	})
 
 	children.CountPicker = e(ToggleRow, {
@@ -449,14 +641,14 @@ local function ColorCompanionSettings(props: ToolSettingsProps)
 			props.SetSetting("SwatchCount", newCount)
 			regenerate(nil, nil, newCount)
 		end,
-		LayoutOrder = 5,
+		LayoutOrder = 6,
 	})
 
 	-- Action buttons
 	children.Actions = e("Frame", {
 		Size = UDim2.new(1, 0, 0, 28),
 		BackgroundTransparency = 1,
-		LayoutOrder = 6,
+		LayoutOrder = 7,
 	}, {
 		Layout = e("UIListLayout", {
 			FillDirection = Enum.FillDirection.Horizontal,
