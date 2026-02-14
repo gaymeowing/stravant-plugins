@@ -322,6 +322,9 @@ return function(
 			mTargetNormal = nil
 			mHighlight.Adornee = nil
 			mHighlight.Enabled = false
+			-- Re-select the built-in Select tool to work around a Studio bug
+			-- where deactivating a plugin leaves no tool selected
+			plugin:Activate(false)
 		end
 	end
 
