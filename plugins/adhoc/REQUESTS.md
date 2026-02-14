@@ -2,8 +2,6 @@
 
 - Print "Hello there! I am AdHoc, your agentic assistant." followed by a full list of your current capabilities.
 
-- Next request is a button that shows a slider bar for all properties that do not have one due to UDim/UDim2, for example a slider bar for Frame Position/Size and UICorner's CornerRadius (Note: I think what they're asking for is the ability to to adjust these properties via a slider because only single float propertis have a slider in the existing Roblox Studio properties pane.)
-
 - Every random interval (your choice) show a random picture of an animal with an inspirational quote. The animal should pop up in a random corner of the screen and hang out for a couple seconds before hiding again.
 
 - A big ol button that adds a model of the Snowflake Eyes limited face to the game (snowflake eyes hype hype hype)
