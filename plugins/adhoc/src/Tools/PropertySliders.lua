@@ -20,6 +20,8 @@ local e = React.createElement
 type UDimPropertyInfo = {
 	Name: string,
 	Type: "UDim" | "UDim2",
+	OffsetMin: number?,
+	OffsetMax: number?,
 }
 
 type ClassPropertyMap = {
@@ -32,7 +34,7 @@ local kPropertyMap: { ClassPropertyMap } = {
 	{
 		IsA = "GuiObject",
 		Properties = {
-			{ Name = "Size", Type = "UDim2" },
+			{ Name = "Size", Type = "UDim2", OffsetMin = 0 },
 			{ Name = "Position", Type = "UDim2" },
 		},
 	},
@@ -61,7 +63,7 @@ local kPropertyMap: { ClassPropertyMap } = {
 		ClassName = "UIGridLayout",
 		Properties = {
 			{ Name = "CellPadding", Type = "UDim2" },
-			{ Name = "CellSize", Type = "UDim2" },
+			{ Name = "CellSize", Type = "UDim2", OffsetMin = 0 },
 		},
 	},
 	{
@@ -74,7 +76,7 @@ local kPropertyMap: { ClassPropertyMap } = {
 		ClassName = "UITableLayout",
 		Properties = {
 			{ Name = "CellPadding", Type = "UDim2" },
-			{ Name = "CellSize", Type = "UDim2" },
+			{ Name = "CellSize", Type = "UDim2", OffsetMin = 0 },
 			{ Name = "Padding", Type = "UDim" },
 		},
 	},
@@ -195,6 +197,8 @@ local function ComponentRow(props: {
 	PropertyType: "UDim" | "UDim2",
 	Component: string,
 	IsScale: boolean,
+	OffsetMin: number?,
+	OffsetMax: number?,
 	LayoutOrder: number?,
 })
 	local instances = props.Instances
@@ -218,8 +222,8 @@ local function ComponentRow(props: {
 		end
 	end
 
-	local sliderMin = if props.IsScale then 0 else -500
-	local sliderMax = if props.IsScale then 1 else 500
+	local sliderMin = if props.IsScale then 0 else (props.OffsetMin or -500)
+	local sliderMax = if props.IsScale then 1 else (props.OffsetMax or 500)
 
 	local function applyValue(newValue: number)
 		for _, inst in instances do
@@ -293,6 +297,8 @@ end
 local function UDim2Panel(props: {
 	PropertyName: string,
 	Instances: { Instance },
+	OffsetMin: number?,
+	OffsetMax: number?,
 	LayoutOrder: number?,
 })
 	return e(SubPanel, {
@@ -316,6 +322,8 @@ local function UDim2Panel(props: {
 			PropertyType = "UDim2",
 			Component = "XOffset",
 			IsScale = false,
+			OffsetMin = props.OffsetMin,
+			OffsetMax = props.OffsetMax,
 			LayoutOrder = 2,
 		}),
 		YScale = e(ComponentRow, {
@@ -334,6 +342,8 @@ local function UDim2Panel(props: {
 			PropertyType = "UDim2",
 			Component = "YOffset",
 			IsScale = false,
+			OffsetMin = props.OffsetMin,
+			OffsetMax = props.OffsetMax,
 			LayoutOrder = 4,
 		}),
 	})
@@ -343,6 +353,8 @@ end
 local function UDimPanel(props: {
 	PropertyName: string,
 	Instances: { Instance },
+	OffsetMin: number?,
+	OffsetMax: number?,
 	LayoutOrder: number?,
 })
 	return e(SubPanel, {
@@ -366,6 +378,8 @@ local function UDimPanel(props: {
 			PropertyType = "UDim",
 			Component = "Offset",
 			IsScale = false,
+			OffsetMin = props.OffsetMin,
+			OffsetMax = props.OffsetMax,
 			LayoutOrder = 2,
 		}),
 	})
@@ -443,12 +457,16 @@ local function PropertySlidersSettings(props: ToolSettingsProps)
 			children[prop.Name] = e(UDim2Panel, {
 				PropertyName = prop.Name,
 				Instances = selection,
+				OffsetMin = prop.OffsetMin,
+				OffsetMax = prop.OffsetMax,
 				LayoutOrder = i,
 			})
 		else
 			children[prop.Name] = e(UDimPanel, {
 				PropertyName = prop.Name,
 				Instances = selection,
+				OffsetMin = prop.OffsetMin,
+				OffsetMax = prop.OffsetMax,
 				LayoutOrder = i,
 			})
 		end

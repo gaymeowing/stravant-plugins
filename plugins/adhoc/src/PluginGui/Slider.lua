@@ -85,6 +85,9 @@ local function Slider(props: {
 		return min + f * range
 	end
 
+	local minLabel = string.format("%g", min)
+	local maxLabel = string.format("%g", max)
+
 	return e("Frame", {
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
@@ -95,7 +98,7 @@ local function Slider(props: {
 			FillDirection = Enum.FillDirection.Horizontal,
 			VerticalAlignment = Enum.VerticalAlignment.Center,
 			SortOrder = Enum.SortOrder.LayoutOrder,
-			Padding = UDim.new(0, 6),
+			Padding = UDim.new(0, 4),
 		}),
 		Label = props.Label and e("TextLabel", {
 			Text = props.Label,
@@ -107,13 +110,23 @@ local function Slider(props: {
 			TextXAlignment = Enum.TextXAlignment.Left,
 			LayoutOrder = 1,
 		}),
+		MinLabel = e("TextLabel", {
+			Text = minLabel,
+			TextColor3 = Colors.OFFWHITE,
+			BackgroundTransparency = 1,
+			Size = UDim2.fromOffset(0, 14),
+			AutomaticSize = Enum.AutomaticSize.X,
+			Font = Enum.Font.SourceSans,
+			TextSize = 12,
+			LayoutOrder = 2,
+		}),
 		-- Track container: holds the track, fill, and thumb
 		Track = e("TextButton", {
 			Size = UDim2.new(0, 0, 0, kThumbSize + 4),
 			BackgroundTransparency = 1,
 			AutoButtonColor = false,
 			Text = "",
-			LayoutOrder = 2,
+			LayoutOrder = 3,
 			[React.Event.InputBegan] = function(rbx: TextButton, input: InputObject)
 				beginSliderDrag(rbx, input, function(f)
 					props.ValueChanged(fractionToValue(f))
@@ -161,6 +174,16 @@ local function Slider(props: {
 					CornerRadius = UDim.new(1, 0),
 				}),
 			}),
+		}),
+		MaxLabel = e("TextLabel", {
+			Text = maxLabel,
+			TextColor3 = Colors.OFFWHITE,
+			BackgroundTransparency = 1,
+			Size = UDim2.fromOffset(0, 14),
+			AutomaticSize = Enum.AutomaticSize.X,
+			Font = Enum.Font.SourceSans,
+			TextSize = 12,
+			LayoutOrder = 4,
 		}),
 	})
 end
