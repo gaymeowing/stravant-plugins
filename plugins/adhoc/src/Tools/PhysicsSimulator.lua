@@ -1,6 +1,8 @@
 --!strict
+local ChangeHistoryService = game:GetService("ChangeHistoryService")
 local RunService = game:GetService("RunService")
 local Selection = game:GetService("Selection")
+local UserInputService = game:GetService("UserInputService")
 
 local Plugin = script.Parent.Parent.Parent
 local Packages = Plugin.Packages
@@ -27,6 +29,7 @@ type EmitterData = {
 	Magnitude: number,
 	Position: Vector3,
 	Direction: Vector3, -- surface normal at placement
+	PulsePeriod: number, -- period in seconds (only used by Pulse type)
 	Part: BasePart, -- visualization sphere
 }
 
@@ -36,14 +39,13 @@ type SimState = "stopped" | "running" | "paused"
 -- Constants
 --------------------------------------------------------------------------------
 
-local kForceTypes = { "Wind", "Explosion", "Pulse", "Magnet", "Random" }
+local kForceTypes = { "Wind", "Explosion", "Pulse", "Magnet" }
 
 local kEmitterColor: { [string]: Color3 } = {
 	Wind = Color3.fromRGB(100, 200, 255),
 	Explosion = Color3.fromRGB(255, 100, 50),
 	Pulse = Color3.fromRGB(255, 200, 50),
 	Magnet = Color3.fromRGB(180, 50, 255),
-	Random = Color3.fromRGB(50, 255, 100),
 }
 
 local kHighlightRunning = Color3.fromRGB(0, 200, 50)
@@ -65,28 +67,28 @@ local mAttachments: { [BasePart]: Attachment } = {}
 local mVectorForces: { [BasePart]: VectorForce } = {}
 local mCtx: ToolContext? = nil
 local mUpdateUI: (() -> ())? = nil
-local mPulseApplied = false
+local mSimElapsed = 0
 local mSelectionConnection: RBXScriptConnection? = nil
 
 --------------------------------------------------------------------------------
 -- Helpers
 --------------------------------------------------------------------------------
 
-local function randomUnitVector(): Vector3
-	-- Uniform random direction via rejection sampling
-	while true do
-		local v = Vector3.new(
-			math.random() * 2 - 1,
-			math.random() * 2 - 1,
-			math.random() * 2 - 1
-		)
-		local mag = v.Magnitude
-		if mag > 0.001 and mag <= 1 then
-			return v / mag
-		end
+local function raycastFromMouse(): (Vector3?, Vector3?, BasePart?)
+	local camera = workspace.CurrentCamera
+	if not camera then
+		return nil, nil, nil
 	end
-	-- unreachable but satisfies type checker
-	return Vector3.yAxis
+	local mouseLocation = UserInputService:GetMouseLocation()
+	local ray = camera:ViewportPointToRay(mouseLocation.X, mouseLocation.Y)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { mEmitterFolder :: Instance }
+	local result = workspace:Raycast(ray.Origin, ray.Direction * 10000, params)
+	if result and result.Instance:IsA("BasePart") then
+		return result.Position, result.Normal, result.Instance
+	end
+	return nil, nil, nil
 end
 
 local function createEmitterVisual(emitter: EmitterData): BasePart
@@ -238,7 +240,7 @@ local function setupForces()
 	end
 end
 
-local function computeForce(part: BasePart, isPulseFrame: boolean): Vector3
+local function computeForce(part: BasePart, elapsed: number): Vector3
 	local partPos = part.Position
 	local totalForce = Vector3.zero
 
@@ -255,12 +257,13 @@ local function computeForce(part: BasePart, isPulseFrame: boolean): Vector3
 				totalForce += delta.Unit * magnitude / math.max(distSq, 1)
 			end
 		elseif emitter.Type == "Pulse" then
-			if isPulseFrame then
-				local delta = partPos - emitterPos
-				local distSq = delta.Magnitude ^ 2
-				if delta.Magnitude > 0.001 then
-					totalForce += delta.Unit * magnitude / math.max(distSq, 1)
-				end
+			-- Smooth periodic pulse: sin²(π * t / period) gives 0→1→0 per period
+			local period = emitter.PulsePeriod
+			local pulse = math.sin(math.pi * elapsed / period) ^ 2
+			local delta = partPos - emitterPos
+			local distSq = delta.Magnitude ^ 2
+			if delta.Magnitude > 0.001 then
+				totalForce += delta.Unit * magnitude * pulse / math.max(distSq, 1)
 			end
 		elseif emitter.Type == "Magnet" then
 			local delta = emitterPos - partPos
@@ -268,8 +271,6 @@ local function computeForce(part: BasePart, isPulseFrame: boolean): Vector3
 			if delta.Magnitude > 0.001 then
 				totalForce += delta.Unit * magnitude / math.max(distSq, 1)
 			end
-		elseif emitter.Type == "Random" then
-			totalForce += randomUnitVector() * magnitude
 		end
 	end
 
@@ -286,12 +287,8 @@ local function startSimulation(ctx: ToolContext)
 		return
 	end
 
-	-- Begin undo recording
-	local id = ctx.BeginRecording("Physics Simulation")
-	if not id then
-		return
-	end
-	mRecordingId = id
+	-- Begin undo recording (fall back to SetWaypoint if TryBeginRecording fails)
+	mRecordingId = ctx.BeginRecording("Physics Simulation")
 
 	-- Capture parts and original anchored state
 	mSimulatedParts = parts
@@ -301,7 +298,7 @@ local function startSimulation(ctx: ToolContext)
 		part.Anchored = false
 	end
 
-	mPulseApplied = false
+	mSimElapsed = 0
 	mSimState = "running"
 
 	-- Setup visual feedback and forces
@@ -310,7 +307,7 @@ local function startSimulation(ctx: ToolContext)
 
 	-- Start simulation loop
 	local speed = (ctx.GetSetting("Speed") :: number?) or 1
-	mSimConnection = RunService.Heartbeat:Connect(function(dt: number)
+	mSimConnection = RunService.RenderStepped:Connect(function(dt: number)
 		if mSimState ~= "running" then
 			return
 		end
@@ -333,28 +330,30 @@ local function startSimulation(ctx: ToolContext)
 		end
 		mSimulatedParts = validParts
 
-		-- Determine if this is the first physics frame (for Pulse)
-		local isPulseFrame = not mPulseApplied
-		mPulseApplied = true
+		local simDt = dt * speed
+		mSimElapsed += simDt
 
 		-- Apply forces
 		for _, part in mSimulatedParts do
 			local vf = mVectorForces[part]
 			if vf and vf.Parent then
-				vf.Force = computeForce(part, isPulseFrame)
+				vf.Force = computeForce(part, mSimElapsed)
+			end
+		end
+
+		-- Update Pulse emitter visuals
+		for _, emitter in mEmitters do
+			if emitter.Type == "Pulse" then
+				local pulse = math.sin(math.pi * mSimElapsed / emitter.PulsePeriod) ^ 2
+				local visPart = emitter.Part
+				local scale = 2 + pulse * 1.5
+				visPart.Size = Vector3.new(scale, scale, scale)
+				visPart.Transparency = 0.7 - pulse * 0.5
 			end
 		end
 
 		-- Step physics
 		workspace:StepPhysics(dt * speed, mSimulatedParts)
-
-		-- Zero out forces after step so they don't accumulate
-		for _, part in mSimulatedParts do
-			local vf = mVectorForces[part]
-			if vf and vf.Parent then
-				vf.Force = Vector3.zero
-			end
-		end
 	end)
 
 	if mUpdateUI then
@@ -432,10 +431,12 @@ local function stopSimulation()
 			ctx.FinishRecording(mRecordingId)
 		end
 		mRecordingId = nil
+	else
+		ChangeHistoryService:SetWaypoint("Physics Simulation")
 	end
 
 	mSimulatedParts = {}
-	mPulseApplied = false
+	mSimElapsed = 0
 	mSimState = "stopped"
 
 	if mUpdateUI then
@@ -465,25 +466,29 @@ local function removeEmitter(index: number)
 end
 
 local function placeEmitter(ctx: ToolContext)
-	if not ctx.Target or not ctx.TargetNormal then
-		return
-	end
-
 	local folder = mEmitterFolder
 	if not folder then
 		return
 	end
 
+	-- Do our own raycast to get the actual hit position
+	local hitPos, hitNormal, hitPart = raycastFromMouse()
+	if not hitPos or not hitNormal or not hitPart then
+		return
+	end
+
 	local forceType = (ctx.GetSetting("ForceType") :: string?) or "Wind"
 	local magnitude = (ctx.GetSetting("Magnitude") :: number?) or 100
-	local normal = ctx.TargetNormal
-	local position = ctx.Target.Position + normal * (ctx.Target.Size / 2):Dot(normal:Abs()) + normal * 1.5
+	local pulsePeriod = (ctx.GetSetting("PulsePeriod") :: number?) or 1
+
+	local position = hitPos
 
 	local emitter: EmitterData = {
 		Type = forceType,
 		Magnitude = magnitude,
 		Position = position,
-		Direction = normal,
+		Direction = hitNormal,
+		PulsePeriod = pulsePeriod,
 		Part = nil :: any,
 	}
 
@@ -506,6 +511,7 @@ local function EmitterRow(props: {
 	Index: number,
 	Type: string,
 	Magnitude: number,
+	PulsePeriod: number?,
 	OnRemove: () -> (),
 	LayoutOrder: number?,
 })
@@ -541,7 +547,9 @@ local function EmitterRow(props: {
 		Label = e("TextLabel", {
 			Size = UDim2.new(0, 0, 1, 0),
 			BackgroundTransparency = 1,
-			Text = string.format("%s (%g)", props.Type, props.Magnitude),
+			Text = if props.Type == "Pulse" and props.PulsePeriod
+				then string.format("%s (%g, %gs)", props.Type, props.Magnitude, props.PulsePeriod)
+				else string.format("%s (%g)", props.Type, props.Magnitude),
 			TextColor3 = Colors.WHITE,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			Font = Enum.Font.SourceSans,
@@ -573,16 +581,29 @@ end
 local function PhysicsSimulatorSettings(props: ToolSettingsProps)
 	local forceType = (props.GetSetting("ForceType") :: string?) or "Wind"
 	local magnitude = (props.GetSetting("Magnitude") :: number?) or 100
+	local pulsePeriod = (props.GetSetting("PulsePeriod") :: number?) or 1
 	local speed = (props.GetSetting("Speed") :: number?) or 1
 
-	-- Track selection state for enabling/disabling Start
+	-- Track selection state for enabling/disabling Start, and auto-set magnitude
 	local hasSelection, setHasSelection = React.useState(hasSelectedBaseParts)
 	React.useEffect(function()
-		local cn = Selection.SelectionChanged:Connect(function()
+		local function onSelectionChanged()
 			setHasSelection(hasSelectedBaseParts())
-		end)
-		-- Update on mount too
-		setHasSelection(hasSelectedBaseParts())
+			-- Auto-set magnitude based on total assembly mass while stopped
+			if mSimState == "stopped" then
+				local parts = getSelectedBaseParts()
+				local totalMass = 0
+				for _, part in parts do
+					totalMass += part.AssemblyMass
+				end
+				if totalMass > 0 then
+					local suggestedMagnitude = math.ceil(totalMass * workspace.Gravity * 5)
+					props.SetSetting("Magnitude", suggestedMagnitude)
+				end
+			end
+		end
+		local cn = Selection.SelectionChanged:Connect(onSelectionChanged)
+		onSelectionChanged()
 		return function()
 			cn:Disconnect()
 		end
@@ -615,6 +636,7 @@ local function PhysicsSimulatorSettings(props: ToolSettingsProps)
 			Index = i,
 			Type = emitter.Type,
 			Magnitude = emitter.Magnitude,
+			PulsePeriod = if emitter.Type == "Pulse" then emitter.PulsePeriod else nil,
 			OnRemove = function()
 				removeEmitter(index)
 			end,
@@ -622,12 +644,12 @@ local function PhysicsSimulatorSettings(props: ToolSettingsProps)
 		})
 	end
 
-	-- Force type chips
+	-- Force type chips (2x2 grid)
 	local forceTypeChildren: { [string]: any } = {}
-	forceTypeChildren.ListLayout = e("UIListLayout", {
-		FillDirection = Enum.FillDirection.Horizontal,
+	forceTypeChildren.GridLayout = e("UIGridLayout", {
+		CellSize = UDim2.new(0.5, -2, 0, 24),
+		CellPadding = UDim2.fromOffset(3, 3),
 		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, 3),
 	})
 	for i, ft in kForceTypes do
 		forceTypeChildren[ft] = e(ChipForToggle, {
@@ -788,7 +810,7 @@ local function PhysicsSimulatorSettings(props: ToolSettingsProps)
 			LayoutOrder = 2,
 		}, {
 			ForceTypeRow = e("Frame", {
-				Size = UDim2.new(1, 0, 0, 24),
+				Size = UDim2.new(1, 0, 0, 51),
 				BackgroundTransparency = 1,
 				LayoutOrder = 1,
 			}, forceTypeChildren),
@@ -802,6 +824,17 @@ local function PhysicsSimulatorSettings(props: ToolSettingsProps)
 				end,
 				LayoutOrder = 2,
 			}),
+			PulsePeriod = forceType == "Pulse" and e(NumberInput, {
+				Label = "Period",
+				Value = pulsePeriod,
+				Unit = "s",
+				ValueEntered = function(newValue: number)
+					newValue = math.max(newValue, 0.05)
+					props.SetSetting("PulsePeriod", newValue)
+					return newValue
+				end,
+				LayoutOrder = 3,
+			}),
 			PlaceHint = e("TextLabel", {
 				Size = UDim2.new(1, 0, 0, 16),
 				BackgroundTransparency = 1,
@@ -809,20 +842,20 @@ local function PhysicsSimulatorSettings(props: ToolSettingsProps)
 				TextColor3 = Colors.OFFWHITE,
 				Font = Enum.Font.SourceSansItalic,
 				TextSize = 13,
-				LayoutOrder = 3,
+				LayoutOrder = 4,
 			}),
 			EmitterList = #mEmitters > 0 and e("Frame", {
 				Size = UDim2.new(1, 0, 0, 0),
 				AutomaticSize = Enum.AutomaticSize.Y,
 				BackgroundTransparency = 1,
-				LayoutOrder = 4,
+				LayoutOrder = 5,
 			}, emitterChildren),
 			ClearAll = #mEmitters > 0 and e(OperationButton, {
 				Text = "Clear All Emitters",
 				Height = 28,
 				Disabled = false,
 				Color = Colors.DARK_RED,
-				LayoutOrder = 5,
+				LayoutOrder = 6,
 				OnClick = function()
 					clearEmitters()
 				end,
@@ -844,6 +877,7 @@ local PhysicsSimulator: ToolTypes.ToolDefinition = {
 		ForceType = "Wind",
 		Magnitude = 100,
 		Speed = 1,
+		PulsePeriod = 1,
 	},
 
 	OnActivated = function(ctx: ToolContext)

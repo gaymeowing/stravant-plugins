@@ -152,7 +152,11 @@ return function(
 				return id
 			end,
 			FinishRecording = function(id: string)
-				ChangeHistoryService:FinishRecording(id, Enum.FinishRecordingOperation.Commit)
+				if ChangeHistoryService:IsRecordingInProgress() then
+					ChangeHistoryService:FinishRecording(id, Enum.FinishRecordingOperation.Commit)
+				else
+					ChangeHistoryService:SetWaypoint(id)
+				end
 				if mRecordingId == id then
 					mRecordingId = nil
 				end
