@@ -1,5 +1,6 @@
 --!strict
 local ChangeHistoryService = game:GetService("ChangeHistoryService")
+local InsertService = game:GetService("InsertService")
 
 local Plugin = script.Parent.Parent.Parent
 local Packages = Plugin.Packages
@@ -152,11 +153,9 @@ local function SetFidelitySettings(props: ToolSettingsProps)
 				end
 				local renderEnum = (Enum.RenderFidelity :: any)[renderFidelity]
 				local count = 0
-				for _, desc in workspace:GetDescendants() do
-					if desc:IsA("TriangleMeshPart") or desc:IsA("PartOperation") then
-						desc.RenderFidelity = renderEnum
-						count += 1
-					end
+				for _, desc in workspace:QueryDescendants("TriangleMeshPart") do
+					desc.RenderFidelity = renderEnum
+					count += 1
 				end
 				ChangeHistoryService:FinishRecording(id, Enum.FinishRecordingOperation.Commit)
 				print("[SetFidelity] Set RenderFidelity on " .. count .. " parts")
@@ -182,15 +181,42 @@ local function SetFidelitySettings(props: ToolSettingsProps)
 					return
 				end
 				local collisionEnum = (Enum.CollisionFidelity :: any)[collisionFidelity]
-				local count = 0
-				for _, desc in workspace:GetDescendants() do
-					if desc:IsA("TriangleMeshPart") or desc:IsA("PartOperation") then
-						desc.CollisionFidelity = collisionEnum
-						count += 1
+
+				-- Group MeshParts by MeshId for template pooling
+				local meshGroups: { [string]: { MeshPart } } = {}
+				for _, desc in workspace:QueryDescendants("MeshPart") do
+					if desc.CollisionFidelity ~= collisionEnum then
+						local meshId = desc.MeshId
+						if meshId ~= "" then
+							if not meshGroups[meshId] then
+								meshGroups[meshId] = {}
+							end
+							table.insert(meshGroups[meshId], desc)
+						end
 					end
 				end
+
+				-- Create one template per unique MeshId and apply to all parts with that mesh
+				local count = 0
+				local failed = 0
+				for meshId, parts in meshGroups do
+					local ok, template = pcall(function()
+						return InsertService:CreateMeshPartAsync(meshId, collisionEnum, Enum.RenderFidelity.Automatic)
+					end)
+					if ok and template then
+						for _, part in parts do
+							part:ApplyMesh(template)
+							count += 1
+						end
+						template:Destroy()
+					else
+						failed += #parts
+						warn("[SetFidelity] Failed to create template for " .. meshId .. ": " .. tostring(template))
+					end
+				end
+
 				ChangeHistoryService:FinishRecording(id, Enum.FinishRecordingOperation.Commit)
-				print("[SetFidelity] Set CollisionFidelity on " .. count .. " parts")
+				print("[SetFidelity] Set CollisionFidelity on " .. count .. " MeshParts")
 			end,
 		}, {
 			Corner = e("UICorner", {
