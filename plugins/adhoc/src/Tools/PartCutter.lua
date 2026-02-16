@@ -10,6 +10,7 @@ local Geometry = require(Packages.Geometry)
 
 local Colors = require("../PluginGui/Colors")
 local OperationButton = require("../PluginGui/OperationButton")
+local Checkbox = require("../PluginGui/Checkbox")
 local ToolTypes = require("../ToolTypes")
 
 type ToolContext = ToolTypes.ToolContext
@@ -164,6 +165,57 @@ local function computeCutDirection(
 end
 
 --------------------------------------------------------------------------------
+-- Model split helpers
+--------------------------------------------------------------------------------
+
+-- Find the target Model for model split mode
+-- scope: "Parent" (first Model ancestor) or "TopLevel" (highest Model ancestor)
+local function findTargetModel(part: BasePart, scope: string): Model?
+	local current = part.Parent
+	local lastModel: Model? = nil
+	while current and not current:IsA("Workspace") do
+		if current:IsA("Model") then
+			if scope == "Parent" then
+				return current :: Model
+			end
+			lastModel = current :: Model
+		end
+		current = current.Parent
+	end
+	return lastModel
+end
+
+-- Bounding box corner sign vectors
+local CORNER_SIGNS = {
+	Vector3.new(-1, -1, -1), Vector3.new(-1, -1, 1),
+	Vector3.new(-1, 1, -1), Vector3.new(-1, 1, 1),
+	Vector3.new(1, -1, -1), Vector3.new(1, -1, 1),
+	Vector3.new(1, 1, -1), Vector3.new(1, 1, 1),
+}
+
+-- Classify a part relative to a cut plane as positive, negative, or straddling
+local function classifyPart(part: BasePart, cutPoint: Vector3, cutNormal: Vector3): string
+	local cf = part.CFrame
+	local halfSize = part.Size / 2
+	local hasPositive = false
+	local hasNegative = false
+	for _, signs in CORNER_SIGNS do
+		local corner = cf:PointToWorldSpace(halfSize * signs)
+		local dot = (corner - cutPoint):Dot(cutNormal)
+		if dot > 0 then
+			hasPositive = true
+		else
+			hasNegative = true
+		end
+		if hasPositive and hasNegative then
+			return "straddling"
+		end
+	end
+	if hasPositive then return "positive" end
+	return "negative"
+end
+
+--------------------------------------------------------------------------------
 -- State
 --------------------------------------------------------------------------------
 
@@ -174,6 +226,7 @@ local mCutEdge: GeometryEdge? = nil
 local mFaceNormal: Vector3? = nil
 local mCutDir: Vector3? = nil
 local mCutParts: {BasePart} = {} -- all parts to cut (original + in-between)
+local mTargetModel: Model? = nil -- model being split in model mode
 local mStatusMessage: string? = nil -- error message shown after a failed cut
 local mStatusAlpha: number = 1 -- transparency animation (1 = visible, 0 = gone)
 local mStatusThread: thread? = nil -- animation coroutine
@@ -261,6 +314,7 @@ local function clearState()
 	mFaceNormal = nil
 	mCutDir = nil
 	mCutParts = {}
+	mTargetModel = nil
 	clearStatusMessage()
 	clearAdornments()
 end
@@ -554,11 +608,152 @@ local function executeCut(part: BasePart, cutPoint: Vector3, cutDir: Vector3, fa
 	return "Cut failed for '" .. part.Name .. "'"
 end
 
+-- Cut a straddling part and keep only the half on the specified side.
+-- keepSide: "positive" or "negative"
+local function cutAndKeepSide(
+	part: BasePart,
+	cutPoint: Vector3,
+	cutDir: Vector3,
+	faceNormal: Vector3,
+	cutNormal: Vector3,
+	keepSide: string
+): string?
+	local parent = part.Parent
+	if not parent then return nil end
+
+	-- Snapshot children before cut
+	local childrenBefore: {[Instance]: boolean} = {}
+	for _, child in parent:GetChildren() do
+		childrenBefore[child] = true
+	end
+
+	local err = executeCut(part, cutPoint, cutDir, faceNormal)
+
+	if err then
+		-- Cut failed; part is still intact. Classify by center and remove if wrong side.
+		local centerDot = (part.CFrame.Position - cutPoint):Dot(cutNormal)
+		if keepSide == "positive" and centerDot < 0 then
+			part.Parent = nil
+		elseif keepSide == "negative" and centerDot > 0 then
+			part.Parent = nil
+		end
+		return err
+	end
+
+	-- Find new children (the halves) and remove the wrong-side one
+	for _, child in parent:GetChildren() do
+		if not childrenBefore[child] and child:IsA("BasePart") then
+			local centerDot = (child.CFrame.Position - cutPoint):Dot(cutNormal)
+			if keepSide == "positive" and centerDot < 0 then
+				child.Parent = nil
+			elseif keepSide == "negative" and centerDot > 0 then
+				child.Parent = nil
+			end
+		end
+	end
+	return nil
+end
+
+-- Execute a model split: cut straddling parts and separate into two sibling models
+local function executeModelCut(
+	model: Model,
+	cutPoint: Vector3,
+	cutDir: Vector3,
+	faceNormal: Vector3
+): {string}
+	local cutNormal = cutDir:Cross(faceNormal).Unit
+	local errors: {string} = {}
+
+	-- Collect all parts in the model
+	local allParts: {BasePart} = {}
+	for _, desc in model:GetDescendants() do
+		if desc:IsA("BasePart") then
+			table.insert(allParts, desc)
+		end
+	end
+
+	-- Classify each part
+	local positiveParts: {BasePart} = {}
+	local negativeParts: {BasePart} = {}
+	local straddlingParts: {BasePart} = {}
+	for _, part in allParts do
+		local side = classifyPart(part, cutPoint, cutNormal)
+		if side == "positive" then
+			table.insert(positiveParts, part)
+		elseif side == "negative" then
+			table.insert(negativeParts, part)
+		else
+			table.insert(straddlingParts, part)
+		end
+	end
+
+	-- If everything is on one side, no split needed
+	if #positiveParts == 0 and #straddlingParts == 0 then
+		return errors
+	end
+	if #negativeParts == 0 and #straddlingParts == 0 then
+		return errors
+	end
+
+	-- Clone the model for the positive side (before any mutations)
+	local newModel = model:Clone()
+
+	-- Build mapping from original parts to cloned parts
+	-- GetDescendants returns in the same order for both
+	local cloneDescendants: {BasePart} = {}
+	for _, desc in newModel:GetDescendants() do
+		if desc:IsA("BasePart") then
+			table.insert(cloneDescendants, desc)
+		end
+	end
+
+	local origToClone: {[BasePart]: BasePart} = {}
+	for i, part in allParts do
+		origToClone[part] = cloneDescendants[i]
+	end
+
+	-- Original model keeps the NEGATIVE side
+	for _, part in positiveParts do
+		part.Parent = nil
+	end
+	for _, part in straddlingParts do
+		local err = cutAndKeepSide(part, cutPoint, cutDir, faceNormal, cutNormal, "negative")
+		if err then
+			table.insert(errors, err)
+		end
+	end
+
+	-- Cloned model keeps the POSITIVE side
+	for _, part in negativeParts do
+		local clonedPart = origToClone[part]
+		if clonedPart then
+			clonedPart.Parent = nil
+		end
+	end
+	for _, part in straddlingParts do
+		local clonedPart = origToClone[part]
+		if clonedPart then
+			local err = cutAndKeepSide(clonedPart, cutPoint, cutDir, faceNormal, cutNormal, "positive")
+			if err then
+				table.insert(errors, err)
+			end
+		end
+	end
+
+	-- Parent clone as sibling of original
+	newModel.Parent = model.Parent
+
+	return errors
+end
+
 --------------------------------------------------------------------------------
 -- Settings UI
 --------------------------------------------------------------------------------
 
 local function PartCutterSettings(props: ToolSettingsProps)
+	local isModelMode = props.GetSetting("SplitMode") == "Model"
+	local isTopLevel = props.GetSetting("ModelScope") == "TopLevel"
+
 	local stateText = if mState == "idle"
 		then "Click an edge to set cut point"
 		else "Move mouse to set angle, click to cut"
@@ -568,6 +763,14 @@ local function PartCutterSettings(props: ToolSettingsProps)
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Padding = UDim.new(0, 4),
 		}),
+		ModelModeCheckbox = e(Checkbox, {
+			Label = "Model Mode",
+			Checked = isModelMode,
+			LayoutOrder = 1,
+			Changed = function(checked: boolean)
+				props.SetSetting("SplitMode", if checked then "Model" else "Part")
+			end,
+		}),
 		StatusLabel = e("TextLabel", {
 			Size = UDim2.new(1, 0, 0, 24),
 			BackgroundTransparency = 1,
@@ -576,9 +779,20 @@ local function PartCutterSettings(props: ToolSettingsProps)
 			Font = Enum.Font.SourceSans,
 			TextSize = 16,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			LayoutOrder = 1,
+			LayoutOrder = 10,
 		}),
 	}
+
+	if isModelMode then
+		children.TopLevelCheckbox = e(Checkbox, {
+			Label = "Top-Level Model",
+			Checked = isTopLevel,
+			LayoutOrder = 2,
+			Changed = function(checked: boolean)
+				props.SetSetting("ModelScope", if checked then "TopLevel" else "Parent")
+			end,
+		})
+	end
 
 	if mState == "pickAngle" then
 		children.CancelButton = e(OperationButton, {
@@ -586,7 +800,7 @@ local function PartCutterSettings(props: ToolSettingsProps)
 			Height = 28,
 			Disabled = false,
 			Color = Colors.DISABLED_GREY,
-			LayoutOrder = 2,
+			LayoutOrder = 11,
 			OnClick = cancelCut,
 		})
 	end
@@ -603,7 +817,7 @@ local function PartCutterSettings(props: ToolSettingsProps)
 			TextSize = 14,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			TextWrapped = true,
-			LayoutOrder = 3,
+			LayoutOrder = 12,
 		})
 	end
 
@@ -692,44 +906,53 @@ local PartCutter: ToolTypes.ToolDefinition = {
 					local projDist = (mouseOnPlane - mCutPoint):Dot(cutDir)
 					local lineLength = math.max(projDist, 0.5)
 
-					-- Check if hovering a surface with matching normal on a different part
-					local partsTocut: {BasePart} = {mCutPart :: BasePart}
-					if ctx.Target
-						and ctx.Target ~= mCutPart
-						and ctx.TargetNormal
-						and ctx.TargetPosition
-						and mFaceNormal:Dot(ctx.TargetNormal) > 0.99
-					then
-						-- Extend line to the hovered point
-						local hoveredDist = (ctx.TargetPosition - mCutPoint):Dot(cutDir)
-						if hoveredDist > 0.5 then
-							lineLength = math.max(lineLength, hoveredDist)
+					if mTargetModel then
+						-- Model mode: extend line to cover the full model extent
+						for _, part in mCutParts do
+							local ext = (part.CFrame.Position - mCutPoint):Dot(cutDir)
+								+ part.Size.Magnitude / 2
+							lineLength = math.max(lineLength, ext)
 						end
+					else
+						-- Part mode: check if hovering a matching surface on another part
+						local partsTocut: {BasePart} = {mCutPart :: BasePart}
+						if ctx.Target
+							and ctx.Target ~= mCutPart
+							and ctx.TargetNormal
+							and ctx.TargetPosition
+							and mFaceNormal:Dot(ctx.TargetNormal) > 0.99
+						then
+							-- Extend line to the hovered point
+							local hoveredDist = (ctx.TargetPosition - mCutPoint):Dot(cutDir)
+							if hoveredDist > 0.5 then
+								lineLength = math.max(lineLength, hoveredDist)
+							end
 
-						-- Find all parts along the cut line via region query
-						local found = findPartsAlongLine(
-							mCutPoint, cutDir, lineLength, mFaceNormal
-						)
-						for _, part in found do
-							-- Deduplicate
-							local already = false
-							for _, existing in partsTocut do
-								if existing == part then
-									already = true
-									break
+							-- Find all parts along the cut line via region query
+							local found = findPartsAlongLine(
+								mCutPoint, cutDir, lineLength, mFaceNormal
+							)
+							for _, part in found do
+								-- Deduplicate
+								local already = false
+								for _, existing in partsTocut do
+									if existing == part then
+										already = true
+										break
+									end
+								end
+								if not already then
+									table.insert(partsTocut, part)
 								end
 							end
-							if not already then
-								table.insert(partsTocut, part)
-							end
 						end
-					end
 
-					mCutParts = partsTocut
+						mCutParts = partsTocut
+					end
 
 					-- Highlight all affected parts (managed by us, not shared highlight)
 					ctx.SetHighlight(nil)
-					updatePartHighlights(partsTocut)
+					updatePartHighlights(mCutParts)
 
 					updateCutLine(mCutPoint, cutDir, lineLength)
 				end
@@ -755,13 +978,34 @@ local PartCutter: ToolTypes.ToolDefinition = {
 			mCutPoint = snapped
 			mCutEdge = edge
 			mFaceNormal = ctx.TargetNormal
-			mCutParts = {ctx.Target}
 			clearStatusMessage()
+
+			-- Determine candidate parts based on split mode
+			local splitMode = ctx.GetSetting("SplitMode")
+			if splitMode == "Model" then
+				local scope = ctx.GetSetting("ModelScope")
+				local targetModel = findTargetModel(ctx.Target, scope)
+				if targetModel then
+					mTargetModel = targetModel
+					local modelParts: {BasePart} = {}
+					for _, desc in targetModel:GetDescendants() do
+						if desc:IsA("BasePart") then
+							table.insert(modelParts, desc)
+						end
+					end
+					mCutParts = modelParts
+				else
+					-- No model found, fall back to single part
+					mCutParts = {ctx.Target}
+				end
+			else
+				mCutParts = {ctx.Target}
+			end
 
 			-- Keep edge highlight and snap point visible as locked indicators
 			-- Use our own highlights instead of the shared one
 			ctx.SetHighlight(nil)
-			updatePartHighlights({ctx.Target})
+			updatePartHighlights(mCutParts)
 			ctx.UpdateUI()
 
 		elseif mState == "pickAngle" then
@@ -795,15 +1039,25 @@ local PartCutter: ToolTypes.ToolDefinition = {
 			local cutPoint = mCutPoint
 			local faceNormal = mFaceNormal
 			local partsTocut = mCutParts
+			local targetModel = mTargetModel
 
 			clearState()
 
 			local id = ctx.BeginRecording("Part Cut")
 			local errors: {string} = {}
-			for _, partToCut in partsTocut do
-				local err = executeCut(partToCut, cutPoint, cutDir, faceNormal)
-				if err then
+			if targetModel then
+				-- Model mode: split the model
+				local modelErrors = executeModelCut(targetModel, cutPoint, cutDir, faceNormal)
+				for _, err in modelErrors do
 					table.insert(errors, err)
+				end
+			else
+				-- Part mode: cut individual parts
+				for _, partToCut in partsTocut do
+					local err = executeCut(partToCut, cutPoint, cutDir, faceNormal)
+					if err then
+						table.insert(errors, err)
+					end
 				end
 			end
 			if id then
@@ -820,6 +1074,11 @@ local PartCutter: ToolTypes.ToolDefinition = {
 	end,
 
 	RenderSettings = PartCutterSettings,
+
+	DefaultSettings = {
+		SplitMode = "Part",
+		ModelScope = "Parent",
+	},
 }
 
 return PartCutter
