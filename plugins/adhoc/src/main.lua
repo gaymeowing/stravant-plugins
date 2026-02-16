@@ -1,5 +1,6 @@
 --!strict
 local ChangeHistoryService = game:GetService("ChangeHistoryService")
+local CoreGui = game:GetService("CoreGui")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
@@ -74,6 +75,7 @@ return function(
 	local mIsMouseDown = false
 	local mTarget: BasePart? = nil
 	local mTargetNormal: Vector3? = nil
+	local mTargetPosition: Vector3? = nil
 	local mRecordingId: string? = nil
 
 	-- Highlight for hover preview (created lazily, only parented when in use)
@@ -134,6 +136,7 @@ return function(
 			Plugin = plugin,
 			Target = mTarget,
 			TargetNormal = mTargetNormal,
+			TargetPosition = mTargetPosition,
 			IsMouseDown = mIsMouseDown,
 			GetSetting = function(key: string): any
 				return getToolSetting(toolId, key)
@@ -142,12 +145,13 @@ return function(
 				setToolSetting(toolId, key, value)
 				updateUI()
 			end,
-			SetHighlight = function(part: BasePart?)
+			SetHighlight = function(part: BasePart?, hideOutline: boolean?)
 				if part then
 					local highlight = getHighlight()
 					highlight.Adornee = part
+					highlight.OutlineTransparency = if hideOutline then 1 else 0
 					highlight.Enabled = true
-					highlight.Parent = workspace
+					highlight.Parent = CoreGui
 				elseif mHighlight then
 					mHighlight.Adornee = nil
 					mHighlight.Enabled = false
@@ -175,10 +179,10 @@ return function(
 		}
 	end
 
-	local function raycastFromMouse(): (BasePart?, Vector3?)
+	local function raycastFromMouse(): (BasePart?, Vector3?, Vector3?)
 		local camera = workspace.CurrentCamera
 		if not camera then
-			return nil, nil
+			return nil, nil, nil
 		end
 		local mouseLocation = UserInputService:GetMouseLocation()
 		local ray = camera:ViewportPointToRay(mouseLocation.X, mouseLocation.Y)
@@ -199,10 +203,10 @@ return function(
 
 			local result = workspace:Raycast(origin, direction, params)
 			if not result or not result.Instance:IsA("BasePart") then
-				return nil, nil
+				return nil, nil, nil
 			end
 			if not skipLocked or not result.Instance.Locked then
-				return result.Instance, result.Normal
+				return result.Instance, result.Normal, result.Position
 			end
 			-- Skip this locked part and try again
 			if not ignored then
@@ -211,7 +215,7 @@ return function(
 				table.insert(ignored, result.Instance)
 			end
 		end
-		return nil, nil
+		return nil, nil, nil
 	end
 
 	local mLastMouseLocation = Vector2.zero
@@ -248,6 +252,7 @@ return function(
 				mMouseInViewport = false
 				mTarget = nil
 				mTargetNormal = nil
+				mTargetPosition = nil
 				if mHighlight then
 					mHighlight.Adornee = nil
 					mHighlight.Enabled = false
@@ -267,7 +272,7 @@ return function(
 			if mouseLocation ~= mLastMouseLocation or cameraCFrame ~= mLastCameraCFrame then
 				mLastMouseLocation = mouseLocation
 				mLastCameraCFrame = cameraCFrame
-				mTarget, mTargetNormal = raycastFromMouse()
+				mTarget, mTargetNormal, mTargetPosition = raycastFromMouse()
 
 				if mActiveTool.OnViewChanged then
 					mActiveTool.OnViewChanged(createToolContext())
@@ -284,7 +289,7 @@ return function(
 			end
 			if input.UserInputType == Enum.UserInputType.MouseButton1 then
 				mIsMouseDown = true
-				mTarget, mTargetNormal = raycastFromMouse()
+				mTarget, mTargetNormal, mTargetPosition = raycastFromMouse()
 				if mActiveTool.OnClicked then
 					mActiveTool.OnClicked(createToolContext())
 				end
@@ -333,6 +338,7 @@ return function(
 			mIsMouseDown = false
 			mTarget = nil
 			mTargetNormal = nil
+			mTargetPosition = nil
 			if mHighlight then
 				mHighlight.Adornee = nil
 				mHighlight.Enabled = false
