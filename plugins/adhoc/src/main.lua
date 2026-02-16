@@ -72,6 +72,7 @@ return function(
 
 	local active = false
 	local mActiveTool: ToolDefinition? = nil
+	local mPluginActivated = false -- whether we called plugin:Activate(true) for the current tool
 	local mIsMouseDown = false
 	local mTarget: BasePart? = nil
 	local mTargetNormal: Vector3? = nil
@@ -344,12 +345,13 @@ return function(
 				mHighlight.Enabled = false
 				mHighlight.Parent = nil
 			end
-			if selectRibbonTool ~= false then
+			if selectRibbonTool ~= false and mPluginActivated then
 				-- Re-select the built-in Select tool to work around a Studio bug
 				-- where deactivating a plugin leaves no tool selected
 				plugin:Activate(false)
 				plugin:SelectRibbonTool(Enum.RibbonTool.Select, UDim2.new())
 			end
+			mPluginActivated = false
 		end
 	end
 
@@ -365,6 +367,7 @@ return function(
 		end
 		-- Only activate the plugin (taking over input) if the tool uses the viewport
 		if tool.OnClicked or tool.OnViewChanged or tool.OnActivated then
+			mPluginActivated = true
 			plugin:Activate(true)
 		end
 		updateUI()
