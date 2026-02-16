@@ -465,8 +465,11 @@ local function getAxisAligned(part: BasePart, cutNormal: Vector3): string?
 	return nil
 end
 
--- Simple axis-aligned cut: clone + resize
-local function doSimpleCut(part: BasePart, cutPoint: Vector3, cutNormal: Vector3, axis: string)
+-- Simple axis-aligned cut: clone + resize.
+-- Returns (negHalf, posHalf) relative to cutNormal direction.
+local function doSimpleCut(
+	part: BasePart, cutPoint: Vector3, cutNormal: Vector3, axis: string
+): (BasePart, BasePart)
 	local localCutPt = part.CFrame:PointToObjectSpace(cutPoint)
 	local size = part.Size
 
@@ -491,11 +494,11 @@ local function doSimpleCut(part: BasePart, cutPoint: Vector3, cutNormal: Vector3
 	local halfSize = fullSize / 2
 	splitPos = math.clamp(splitPos, -halfSize + 0.001, halfSize - 0.001)
 
-	-- Negative half: from -halfSize to splitPos
+	-- Local-axis-negative half: from -halfSize to splitPos
 	local negSize = splitPos + halfSize
 	local negCenter = (-halfSize + splitPos) / 2
 
-	-- Positive half: from splitPos to +halfSize
+	-- Local-axis-positive half: from splitPos to +halfSize
 	local posSize = halfSize - splitPos
 	local posCenter = (splitPos + halfSize) / 2
 
@@ -517,15 +520,31 @@ local function doSimpleCut(part: BasePart, cutPoint: Vector3, cutNormal: Vector3
 	end
 
 	local parent = part.Parent
-	local half1 = makeHalf(negCenter, negSize)
-	local half2 = makeHalf(posCenter, posSize)
-	half1.Parent = parent
-	half2.Parent = parent
+	local localNegHalf = makeHalf(negCenter, negSize)
+	local localPosHalf = makeHalf(posCenter, posSize)
+	localNegHalf.Parent = parent
+	localPosHalf.Parent = parent
 	part.Parent = nil
+
+	-- Map local-axis halves to cut-plane halves based on cutNormal direction
+	local localNormal = part.CFrame:VectorToObjectSpace(cutNormal)
+	local axisSign: number
+	if axis == "X" then axisSign = localNormal.X
+	elseif axis == "Y" then axisSign = localNormal.Y
+	else axisSign = localNormal.Z end
+
+	if axisSign > 0 then
+		return localNegHalf, localPosHalf
+	else
+		return localPosHalf, localNegHalf
+	end
 end
 
--- CSG cut for general (non-axis-aligned) case. Returns true on success.
-local function doCSGCut(part: BasePart, cutPoint: Vector3, cutNormal: Vector3): boolean
+-- CSG cut for general (non-axis-aligned) case.
+-- Returns (success, negHalf, posHalf) relative to cutNormal direction.
+local function doCSGCut(
+	part: BasePart, cutPoint: Vector3, cutNormal: Vector3
+): (boolean, BasePart?, BasePart?)
 	local perp = perpendicularVector(cutNormal)
 
 	-- Positive side block (covers the half-space on the +cutNormal side)
@@ -566,16 +585,19 @@ local function doCSGCut(part: BasePart, cutPoint: Vector3, cutNormal: Vector3): 
 		negHalf.Parent = parent
 		posHalf.Parent = parent
 		part.Parent = nil
-		return true
+		return true, negHalf, posHalf
 	else
 		warn("PartCutter: CSG cut failed for", part:GetFullName())
-		return false
+		return false, nil, nil
 	end
 end
 
 -- Determine whether to use simple cut or CSG, and execute.
--- Returns nil on success, or an error message string on failure.
-local function executeCut(part: BasePart, cutPoint: Vector3, cutDir: Vector3, faceNormal: Vector3): string?
+-- Returns (errorMsg?, negHalf?, posHalf?) — negHalf/posHalf relative to cutNormal.
+-- On failure, errorMsg is set and halves are nil; the original part is unchanged.
+local function executeCut(
+	part: BasePart, cutPoint: Vector3, cutDir: Vector3, faceNormal: Vector3
+): (string?, BasePart?, BasePart?)
 	local cutNormal = cutDir:Cross(faceNormal).Unit
 
 	local axis = getAxisAligned(part, cutNormal)
@@ -583,33 +605,34 @@ local function executeCut(part: BasePart, cutPoint: Vector3, cutDir: Vector3, fa
 		-- Simple cut works for blocks along any axis
 		local isBlock = part:IsA("Part") and (part :: Part).Shape == Enum.PartType.Block
 		if isBlock then
-			doSimpleCut(part, cutPoint, cutNormal, axis)
-			return nil
+			local neg, pos = doSimpleCut(part, cutPoint, cutNormal, axis)
+			return nil, neg, pos
 		end
 		-- Cylinder: simple cut along X (length axis) only
 		local isCylinder = part:IsA("Part") and (part :: Part).Shape == Enum.PartType.Cylinder
 		if isCylinder and axis == "X" then
-			doSimpleCut(part, cutPoint, cutNormal, axis)
-			return nil
+			local neg, pos = doSimpleCut(part, cutPoint, cutNormal, axis)
+			return nil, neg, pos
 		end
 		-- Wedge: simple cut along X (width axis) only
 		local isWedge = (part:IsA("Part") and (part :: Part).Shape == Enum.PartType.Wedge)
 			or part:IsA("WedgePart")
 		if isWedge and axis == "X" then
-			doSimpleCut(part, cutPoint, cutNormal, axis)
-			return nil
+			local neg, pos = doSimpleCut(part, cutPoint, cutNormal, axis)
+			return nil, neg, pos
 		end
 	end
 
 	-- General case: CSG
-	if doCSGCut(part, cutPoint, cutNormal) then
-		return nil
+	local ok, neg, pos = doCSGCut(part, cutPoint, cutNormal)
+	if ok then
+		return nil, neg, pos
 	end
 
 	if part:IsA("MeshPart") then
-		return "Can't cut '" .. part.Name .. "' (CSG not supported for this MeshPart)"
+		return "Can't cut '" .. part.Name .. "' (CSG not supported for this MeshPart)", nil, nil
 	end
-	return "Cut failed for '" .. part.Name .. "'"
+	return "Cut failed for '" .. part.Name .. "'", nil, nil
 end
 
 -- Cut a straddling part and keep only the half on the specified side.
@@ -622,16 +645,7 @@ local function cutAndKeepSide(
 	cutNormal: Vector3,
 	keepSide: string
 ): string?
-	local parent = part.Parent
-	if not parent then return nil end
-
-	-- Snapshot children before cut
-	local childrenBefore: {[Instance]: boolean} = {}
-	for _, child in parent:GetChildren() do
-		childrenBefore[child] = true
-	end
-
-	local err = executeCut(part, cutPoint, cutDir, faceNormal)
+	local err, negHalf, posHalf = executeCut(part, cutPoint, cutDir, faceNormal)
 
 	if err then
 		-- Cut failed; part is still intact. Classify by center and remove if wrong side.
@@ -644,16 +658,11 @@ local function cutAndKeepSide(
 		return err
 	end
 
-	-- Find new children (the halves) and remove the wrong-side one
-	for _, child in parent:GetChildren() do
-		if not childrenBefore[child] and child:IsA("BasePart") then
-			local centerDot = (child.ExtentsCFrame.Position - cutPoint):Dot(cutNormal)
-			if keepSide == "positive" and centerDot < 0 then
-				child.Parent = nil
-			elseif keepSide == "negative" and centerDot > 0 then
-				child.Parent = nil
-			end
-		end
+	-- Remove the half on the wrong side
+	if keepSide == "negative" and posHalf then
+		posHalf.Parent = nil
+	elseif keepSide == "positive" and negHalf then
+		negHalf.Parent = nil
 	end
 	return nil
 end
