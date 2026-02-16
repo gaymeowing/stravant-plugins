@@ -195,8 +195,8 @@ local CORNER_SIGNS = {
 
 -- Classify a part relative to a cut plane as positive, negative, or straddling
 local function classifyPart(part: BasePart, cutPoint: Vector3, cutNormal: Vector3): string
-	local cf = part.CFrame
-	local halfSize = part.Size / 2
+	local cf = part.ExtentsCFrame
+	local halfSize = part.ExtentsSize / 2
 	local hasPositive = false
 	local hasNegative = false
 	for _, signs in CORNER_SIGNS do
@@ -635,7 +635,7 @@ local function cutAndKeepSide(
 
 	if err then
 		-- Cut failed; part is still intact. Classify by center and remove if wrong side.
-		local centerDot = (part.CFrame.Position - cutPoint):Dot(cutNormal)
+		local centerDot = (part.ExtentsCFrame.Position - cutPoint):Dot(cutNormal)
 		if keepSide == "positive" and centerDot < 0 then
 			part.Parent = nil
 		elseif keepSide == "negative" and centerDot > 0 then
@@ -647,7 +647,7 @@ local function cutAndKeepSide(
 	-- Find new children (the halves) and remove the wrong-side one
 	for _, child in parent:GetChildren() do
 		if not childrenBefore[child] and child:IsA("BasePart") then
-			local centerDot = (child.CFrame.Position - cutPoint):Dot(cutNormal)
+			local centerDot = (child.ExtentsCFrame.Position - cutPoint):Dot(cutNormal)
 			if keepSide == "positive" and centerDot < 0 then
 				child.Parent = nil
 			elseif keepSide == "negative" and centerDot > 0 then
