@@ -225,8 +225,10 @@ local mCutPoint: Vector3? = nil
 local mCutEdge: GeometryEdge? = nil
 local mFaceNormal: Vector3? = nil
 local mCutDir: Vector3? = nil
-local mCutParts: {BasePart} = {} -- all parts to cut (original + in-between)
-local mTargetModel: Model? = nil -- model being split in model mode
+local mCutParts: {BasePart} = {} -- all parts to cut (for highlighting)
+local mInitialModel: Model? = nil -- model from the clicked part (set once per pickAngle)
+local mTargetModels: {Model} = {} -- all models to split (rebuilt each frame, includes initial)
+local mLooseParts: {BasePart} = {} -- parts not in any model, cut individually in model mode
 local mStatusMessage: string? = nil -- error message shown after a failed cut
 local mStatusAlpha: number = 1 -- transparency animation (1 = visible, 0 = gone)
 local mStatusThread: thread? = nil -- animation coroutine
@@ -314,7 +316,9 @@ local function clearState()
 	mFaceNormal = nil
 	mCutDir = nil
 	mCutParts = {}
-	mTargetModel = nil
+	mInitialModel = nil
+	mTargetModels = {}
+	mLooseParts = {}
 	clearStatusMessage()
 	clearAdornments()
 end
@@ -906,8 +910,66 @@ local PartCutter: ToolTypes.ToolDefinition = {
 					local projDist = (mouseOnPlane - mCutPoint):Dot(cutDir)
 					local lineLength = math.max(projDist, 0.5)
 
-					if mTargetModel then
-						-- Model mode: extend line to cover the full model extent
+					if mInitialModel then
+						-- Model mode: hover+region query to find additional models
+						local scope = ctx.GetSetting("ModelScope")
+						local modelSet: {[Model]: boolean} = {[mInitialModel] = true}
+						local looseParts: {BasePart} = {}
+
+						if ctx.Target
+							and ctx.Target ~= mCutPart
+							and ctx.TargetNormal
+							and ctx.TargetPosition
+							and mFaceNormal:Dot(ctx.TargetNormal) > 0.99
+						then
+							local hoveredDist = (ctx.TargetPosition - mCutPoint):Dot(cutDir)
+							if hoveredDist > 0.5 then
+								lineLength = math.max(lineLength, hoveredDist)
+							end
+
+							local found = findPartsAlongLine(
+								mCutPoint, cutDir, lineLength, mFaceNormal
+							)
+							for _, part in found do
+								local model = findTargetModel(part, scope)
+								if model then
+									modelSet[model] = true
+								else
+									local already = false
+									for _, existing in looseParts do
+										if existing == part then
+											already = true
+											break
+										end
+									end
+									if not already then
+										table.insert(looseParts, part)
+									end
+								end
+							end
+						end
+
+						-- Rebuild model list and candidate parts
+						mTargetModels = {}
+						for model in modelSet do
+							table.insert(mTargetModels, model)
+						end
+						mLooseParts = looseParts
+
+						local allParts: {BasePart} = {}
+						for _, model in mTargetModels do
+							for _, desc in model:GetDescendants() do
+								if desc:IsA("BasePart") then
+									table.insert(allParts, desc)
+								end
+							end
+						end
+						for _, part in looseParts do
+							table.insert(allParts, part)
+						end
+						mCutParts = allParts
+
+						-- Extend line to cover all affected parts
 						for _, part in mCutParts do
 							local ext = (part.CFrame.Position - mCutPoint):Dot(cutDir)
 								+ part.Size.Magnitude / 2
@@ -986,7 +1048,9 @@ local PartCutter: ToolTypes.ToolDefinition = {
 				local scope = ctx.GetSetting("ModelScope")
 				local targetModel = findTargetModel(ctx.Target, scope)
 				if targetModel then
-					mTargetModel = targetModel
+					mInitialModel = targetModel
+					mTargetModels = {targetModel}
+					mLooseParts = {}
 					local modelParts: {BasePart} = {}
 					for _, desc in targetModel:GetDescendants() do
 						if desc:IsA("BasePart") then
@@ -1039,17 +1103,27 @@ local PartCutter: ToolTypes.ToolDefinition = {
 			local cutPoint = mCutPoint
 			local faceNormal = mFaceNormal
 			local partsTocut = mCutParts
-			local targetModel = mTargetModel
+			local targetModels = mTargetModels
+			local looseParts = mLooseParts
 
 			clearState()
 
 			local id = ctx.BeginRecording("Part Cut")
 			local errors: {string} = {}
-			if targetModel then
-				-- Model mode: split the model
-				local modelErrors = executeModelCut(targetModel, cutPoint, cutDir, faceNormal)
-				for _, err in modelErrors do
-					table.insert(errors, err)
+			if #targetModels > 0 then
+				-- Model mode: split all affected models
+				for _, model in targetModels do
+					local modelErrors = executeModelCut(model, cutPoint, cutDir, faceNormal)
+					for _, err in modelErrors do
+						table.insert(errors, err)
+					end
+				end
+				-- Cut loose parts (not in any model) individually
+				for _, part in looseParts do
+					local err = executeCut(part, cutPoint, cutDir, faceNormal)
+					if err then
+						table.insert(errors, err)
+					end
 				end
 			else
 				-- Part mode: cut individual parts
