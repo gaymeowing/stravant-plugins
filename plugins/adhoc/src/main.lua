@@ -324,7 +324,7 @@ return function(
 		end
 	end
 
-	local function deactivateTool()
+	local function deactivateTool(selectRibbonTool: boolean?)
 		if mActiveTool then
 			-- Cancel any in-progress recording
 			if mRecordingId then
@@ -344,10 +344,12 @@ return function(
 				mHighlight.Enabled = false
 				mHighlight.Parent = nil
 			end
-			-- Re-select the built-in Select tool to work around a Studio bug
-			-- where deactivating a plugin leaves no tool selected
-			plugin:Activate(false)
-			plugin:SelectRibbonTool(Enum.RibbonTool.Select, UDim2.new())
+			if selectRibbonTool ~= false then
+				-- Re-select the built-in Select tool to work around a Studio bug
+				-- where deactivating a plugin leaves no tool selected
+				plugin:Activate(false)
+				plugin:SelectRibbonTool(Enum.RibbonTool.Select, UDim2.new())
+			end
 		end
 	end
 
@@ -483,8 +485,9 @@ return function(
 
 	-- When another plugin takes focus, deactivate the current tool but keep
 	-- the panel open so the user can re-select a tool (which calls plugin:Activate).
+	-- Don't override the ribbon tool — something else already claimed focus.
 	plugin.Deactivation:Connect(function()
-		deactivateTool()
+		deactivateTool(false)
 		updateUI()
 	end)
 
