@@ -746,7 +746,8 @@ local function tryPrimitiveCut(
 			xDir = -xDir
 		end
 
-		local wedge = Instance.new("WedgePart")
+		local wedge = Instance.new("Part")
+		wedge.Shape = Enum.PartType.Wedge
 		wedge.Size = Vector3.new(extrudeSize, legLen1, legLen2)
 		wedge.CFrame = CFrame.fromMatrix(
 			cf.Position + cd1 * bCenter1 + cd2 * bCenter2, xDir, yDir
@@ -806,6 +807,113 @@ local function tryPrimitiveCut(
 	return negParts, posParts
 end
 
+-- Cut a WedgePart along the Y or Z axis, decomposing into 2 wedges + 1 block.
+-- The wedge cross-section (YZ plane) is a right triangle:
+--   Right angle at (-H/2, +D/2), vertices: (-H/2, -D/2), (-H/2, +D/2), (+H/2, +D/2)
+--   Hypotenuse from (-H/2, -D/2) to (+H/2, +D/2)
+-- All resulting wedges maintain the same orientation as the original.
+-- Returns ({negParts}, {posParts}) relative to cutNormal.
+local function doWedgeAxisCut(
+	part: BasePart, cutPoint: Vector3, cutNormal: Vector3, axis: string
+): ({BasePart}, {BasePart})
+	local cf = part.CFrame
+	local size = part.Size
+	local W, H, D = size.X, size.Y, size.Z
+	local localCutPt = cf:PointToObjectSpace(cutPoint)
+	local localNormal = cf:VectorToObjectSpace(cutNormal)
+	local parent = part.Parent
+
+	local function makeWedge(sizeVec: Vector3, offset: Vector3): BasePart
+		local wedge = Instance.new("Part")
+		wedge.Shape = Enum.PartType.Wedge
+		wedge.Size = sizeVec
+		wedge.CFrame = cf * CFrame.new(offset)
+		copyProperties(wedge, part)
+		wedge.Name = part.Name
+		wedge.Parent = parent
+		return wedge
+	end
+
+	local function makeBlock(sizeVec: Vector3, offset: Vector3): BasePart
+		local block = Instance.new("Part")
+		block.Shape = Enum.PartType.Block
+		block.Size = sizeVec
+		block.CFrame = cf * CFrame.new(offset)
+		copyProperties(block, part)
+		block.Name = part.Name
+		block.Parent = parent
+		return block
+	end
+
+	local localPosParts: {BasePart}
+	local localNegParts: {BasePart}
+
+	if axis == "Y" then
+		local y0 = math.clamp(localCutPt.Y, -H/2 + 0.001, H/2 - 0.001)
+		-- Hypotenuse intersection: zHyp = -D/2 + (y0 + H/2) * D / H
+		local zHyp = -D/2 + (y0 + H/2) * D / H
+
+		-- Upper wedge: right angle at (y0, +D/2), same orientation
+		local upperWedge = makeWedge(
+			Vector3.new(W, H/2 - y0, D * (H/2 - y0) / H),
+			Vector3.new(0, (y0 + H/2) / 2, (zHyp + D/2) / 2)
+		)
+
+		-- Lower block: from (-H/2, zHyp) to (y0, +D/2)
+		local lowerBlock = makeBlock(
+			Vector3.new(W, y0 + H/2, D/2 - zHyp),
+			Vector3.new(0, (-H/2 + y0) / 2, (zHyp + D/2) / 2)
+		)
+
+		-- Lower wedge: right angle at (-H/2, zHyp), same orientation
+		local lowerWedge = makeWedge(
+			Vector3.new(W, y0 + H/2, (y0 + H/2) * D / H),
+			Vector3.new(0, (-H/2 + y0) / 2, (-D/2 + zHyp) / 2)
+		)
+
+		localPosParts = {upperWedge}
+		localNegParts = {lowerBlock, lowerWedge}
+	else -- axis == "Z"
+		local z0 = math.clamp(localCutPt.Z, -D/2 + 0.001, D/2 - 0.001)
+		-- Hypotenuse intersection: yHyp = -H/2 + (z0 + D/2) * H / D
+		local yHyp = -H/2 + (z0 + D/2) * H / D
+
+		-- Front wedge (z < z0): right angle at (-H/2, z0), same orientation
+		local frontWedge = makeWedge(
+			Vector3.new(W, (z0 + D/2) * H / D, z0 + D/2),
+			Vector3.new(0, (-H/2 + yHyp) / 2, (-D/2 + z0) / 2)
+		)
+
+		-- Back block: from (-H/2, z0) to (yHyp, +D/2)
+		local backBlock = makeBlock(
+			Vector3.new(W, (z0 + D/2) * H / D, D/2 - z0),
+			Vector3.new(0, (-H/2 + yHyp) / 2, (z0 + D/2) / 2)
+		)
+
+		-- Back wedge: right angle at (yHyp, +D/2), same orientation
+		local backWedge = makeWedge(
+			Vector3.new(W, H * (D/2 - z0) / D, D/2 - z0),
+			Vector3.new(0, (yHyp + H/2) / 2, (z0 + D/2) / 2)
+		)
+
+		localNegParts = {frontWedge}
+		localPosParts = {backBlock, backWedge}
+	end
+
+	part.Parent = nil
+
+	-- Map local-axis halves to cut-plane halves based on cutNormal direction
+	local axisSign: number
+	if axis == "Y" then axisSign = localNormal.Y
+	else axisSign = localNormal.Z end
+
+	if axisSign > 0 then
+		return localNegParts, localPosParts
+	else
+		return localPosParts, localNegParts
+	end
+end
+
 -- Determine whether to use simple cut or CSG, and execute.
 -- Returns (errorMsg?, negParts?, posParts?) — part arrays relative to cutNormal direction.
 -- On failure, errorMsg is set and part arrays are nil; the original part is unchanged.
@@ -834,6 +942,10 @@ local function executeCut(
 		if isWedge and axis == "X" then
 			local neg, pos = doSimpleCut(part, cutPoint, cutNormal, axis)
 			return nil, {neg}, {pos}
+		end
+		if isWedge and (axis == "Y" or axis == "Z") then
+			local negParts, posParts = doWedgeAxisCut(part, cutPoint, cutNormal, axis)
+			return nil, negParts, posParts
 		end
 	end
 
