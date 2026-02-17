@@ -357,8 +357,64 @@ local function applyRandomization(instances: { Instance }, panels: { PanelConfig
 end
 
 --------------------------------------------------------------------------------
--- Reusable UI: MinMaxRow
+-- Reusable UI: MinMaxRow + MinMaxHeader
 --------------------------------------------------------------------------------
+
+local kLabelWidth = 24
+local kDashWidth = 14
+
+local function MinMaxHeader(props: {
+	LayoutOrder: number?,
+})
+	return e("Frame", {
+		Size = UDim2.new(1, 0, 0, 16),
+		BackgroundTransparency = 1,
+		LayoutOrder = props.LayoutOrder,
+	}, {
+		ListLayout = e("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, 4),
+		}),
+		Spacer = e("Frame", {
+			Size = UDim2.fromOffset(kLabelWidth, 16),
+			BackgroundTransparency = 1,
+			LayoutOrder = 1,
+		}),
+		MinLabel = e("TextLabel", {
+			Size = UDim2.new(0, 0, 0, 16),
+			BackgroundTransparency = 1,
+			Text = "Min",
+			TextColor3 = Colors.OFFWHITE,
+			Font = Enum.Font.SourceSansItalic,
+			TextSize = 13,
+			LayoutOrder = 2,
+		}, {
+			Flex = e("UIFlexItem", {
+				FlexMode = Enum.UIFlexMode.Grow,
+			}),
+		}),
+		DashSpacer = e("Frame", {
+			Size = UDim2.fromOffset(kDashWidth, 16),
+			BackgroundTransparency = 1,
+			LayoutOrder = 3,
+		}),
+		MaxLabel = e("TextLabel", {
+			Size = UDim2.new(0, 0, 0, 16),
+			BackgroundTransparency = 1,
+			Text = "Max",
+			TextColor3 = Colors.OFFWHITE,
+			Font = Enum.Font.SourceSansItalic,
+			TextSize = 13,
+			LayoutOrder = 4,
+		}, {
+			Flex = e("UIFlexItem", {
+				FlexMode = Enum.UIFlexMode.Grow,
+			}),
+		}),
+	})
+end
 
 local function MinMaxRow(props: {
 	Label: string,
@@ -380,7 +436,7 @@ local function MinMaxRow(props: {
 			Padding = UDim.new(0, 4),
 		}),
 		Label = e("TextLabel", {
-			Size = UDim2.fromOffset(20, 24),
+			Size = UDim2.fromOffset(kLabelWidth, 24),
 			BackgroundTransparency = 1,
 			Text = props.Label,
 			TextColor3 = Colors.OFFWHITE,
@@ -396,11 +452,11 @@ local function MinMaxRow(props: {
 			LayoutOrder = 2,
 		}),
 		Dash = e("TextLabel", {
-			Size = UDim2.fromOffset(10, 24),
+			Size = UDim2.fromOffset(kDashWidth, 24),
 			BackgroundTransparency = 1,
-			Text = "-",
+			Text = "\u{2013}",
 			TextColor3 = Colors.OFFWHITE,
-			Font = Enum.Font.SourceSans,
+			Font = Enum.Font.SourceSansBold,
 			TextSize = 16,
 			LayoutOrder = 3,
 		}),
@@ -422,19 +478,31 @@ local function NumberEditor(props: {
 	OnConfigChanged: (key: string, value: any) -> (),
 	LayoutOrder: number?,
 })
-	return e(MinMaxRow, {
-		Label = "",
-		Min = props.Config.Min,
-		Max = props.Config.Max,
-		OnMinChanged = function(v: number)
-			props.OnConfigChanged("Min", v)
-			return v
-		end,
-		OnMaxChanged = function(v: number)
-			props.OnConfigChanged("Max", v)
-			return v
-		end,
+	return e("Frame", {
+		Size = UDim2.new(1, 0, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundTransparency = 1,
 		LayoutOrder = props.LayoutOrder,
+	}, {
+		ListLayout = e("UIListLayout", {
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, 2),
+		}),
+		Header = e(MinMaxHeader, { LayoutOrder = 1 }),
+		Row = e(MinMaxRow, {
+			Label = "",
+			Min = props.Config.Min,
+			Max = props.Config.Max,
+			OnMinChanged = function(v: number)
+				props.OnConfigChanged("Min", v)
+				return v
+			end,
+			OnMaxChanged = function(v: number)
+				props.OnConfigChanged("Max", v)
+				return v
+			end,
+			LayoutOrder = 2,
+		}),
 	})
 end
 
@@ -497,43 +565,45 @@ local function Color3Editor(props: {
 		}),
 	})
 
+	children.Header = e(MinMaxHeader, { LayoutOrder = 2 })
+
 	if isHSV then
 		children.H = e(MinMaxRow, {
 			Label = "H", Min = config.MinH, Max = config.MaxH,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinH", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxH", v); return v end,
-			LayoutOrder = 2,
+			LayoutOrder = 3,
 		})
 		children.S = e(MinMaxRow, {
 			Label = "S", Min = config.MinS, Max = config.MaxS,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinS", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxS", v); return v end,
-			LayoutOrder = 3,
+			LayoutOrder = 4,
 		})
 		children.V = e(MinMaxRow, {
 			Label = "V", Min = config.MinV, Max = config.MaxV,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinV", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxV", v); return v end,
-			LayoutOrder = 4,
+			LayoutOrder = 5,
 		})
 	else
 		children.R = e(MinMaxRow, {
 			Label = "R", Min = config.MinR, Max = config.MaxR,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinR", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxR", v); return v end,
-			LayoutOrder = 2,
+			LayoutOrder = 3,
 		})
 		children.G = e(MinMaxRow, {
 			Label = "G", Min = config.MinG, Max = config.MaxG,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinG", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxG", v); return v end,
-			LayoutOrder = 3,
+			LayoutOrder = 4,
 		})
 		children.B = e(MinMaxRow, {
 			Label = "B", Min = config.MinB, Max = config.MaxB,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinB", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxB", v); return v end,
-			LayoutOrder = 4,
+			LayoutOrder = 5,
 		})
 	end
 
@@ -561,23 +631,24 @@ local function Vector3Editor(props: {
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Padding = UDim.new(0, 2),
 		}),
+		Header = e(MinMaxHeader, { LayoutOrder = 1 }),
 		X = e(MinMaxRow, {
 			Label = "X", Min = config.MinX, Max = config.MaxX,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinX", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxX", v); return v end,
-			LayoutOrder = 1,
+			LayoutOrder = 2,
 		}),
 		Y = e(MinMaxRow, {
 			Label = "Y", Min = config.MinY, Max = config.MaxY,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinY", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxY", v); return v end,
-			LayoutOrder = 2,
+			LayoutOrder = 3,
 		}),
 		Z = e(MinMaxRow, {
 			Label = "Z", Min = config.MinZ, Max = config.MaxZ,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinZ", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxZ", v); return v end,
-			LayoutOrder = 3,
+			LayoutOrder = 4,
 		}),
 	})
 end
@@ -598,17 +669,18 @@ local function Vector2Editor(props: {
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Padding = UDim.new(0, 2),
 		}),
+		Header = e(MinMaxHeader, { LayoutOrder = 1 }),
 		X = e(MinMaxRow, {
 			Label = "X", Min = config.MinX, Max = config.MaxX,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinX", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxX", v); return v end,
-			LayoutOrder = 1,
+			LayoutOrder = 2,
 		}),
 		Y = e(MinMaxRow, {
 			Label = "Y", Min = config.MinY, Max = config.MaxY,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinY", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxY", v); return v end,
-			LayoutOrder = 2,
+			LayoutOrder = 3,
 		}),
 	})
 end
@@ -629,17 +701,18 @@ local function UDimEditor(props: {
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Padding = UDim.new(0, 2),
 		}),
+		Header = e(MinMaxHeader, { LayoutOrder = 1 }),
 		Scale = e(MinMaxRow, {
 			Label = "S", Min = config.MinScale, Max = config.MaxScale,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinScale", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxScale", v); return v end,
-			LayoutOrder = 1,
+			LayoutOrder = 2,
 		}),
 		Offset = e(MinMaxRow, {
 			Label = "O", Min = config.MinOffset, Max = config.MaxOffset,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinOffset", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxOffset", v); return v end,
-			LayoutOrder = 2,
+			LayoutOrder = 3,
 		}),
 	})
 end
@@ -660,29 +733,30 @@ local function UDim2Editor(props: {
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Padding = UDim.new(0, 2),
 		}),
+		Header = e(MinMaxHeader, { LayoutOrder = 1 }),
 		XScale = e(MinMaxRow, {
 			Label = "XS", Min = config.MinXScale, Max = config.MaxXScale,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinXScale", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxXScale", v); return v end,
-			LayoutOrder = 1,
+			LayoutOrder = 2,
 		}),
 		XOffset = e(MinMaxRow, {
 			Label = "XO", Min = config.MinXOffset, Max = config.MaxXOffset,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinXOffset", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxXOffset", v); return v end,
-			LayoutOrder = 2,
+			LayoutOrder = 3,
 		}),
 		YScale = e(MinMaxRow, {
 			Label = "YS", Min = config.MinYScale, Max = config.MaxYScale,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinYScale", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxYScale", v); return v end,
-			LayoutOrder = 3,
+			LayoutOrder = 4,
 		}),
 		YOffset = e(MinMaxRow, {
 			Label = "YO", Min = config.MinYOffset, Max = config.MaxYOffset,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinYOffset", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxYOffset", v); return v end,
-			LayoutOrder = 4,
+			LayoutOrder = 5,
 		}),
 	})
 end
@@ -704,60 +778,62 @@ local function CFrameEditor(props: {
 			Padding = UDim.new(0, 2),
 		}),
 		PosLabel = e("TextLabel", {
-			Size = UDim2.new(1, 0, 0, 16),
+			Size = UDim2.new(1, 0, 0, 18),
 			BackgroundTransparency = 1,
 			Text = "Position",
 			TextColor3 = Colors.OFFWHITE,
 			Font = Enum.Font.SourceSansBold,
-			TextSize = 12,
+			TextSize = 14,
 			TextXAlignment = Enum.TextXAlignment.Left,
 			LayoutOrder = 1,
 		}),
+		PosHeader = e(MinMaxHeader, { LayoutOrder = 2 }),
 		PX = e(MinMaxRow, {
 			Label = "X", Min = config.MinPX, Max = config.MaxPX,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinPX", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxPX", v); return v end,
-			LayoutOrder = 2,
+			LayoutOrder = 3,
 		}),
 		PY = e(MinMaxRow, {
 			Label = "Y", Min = config.MinPY, Max = config.MaxPY,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinPY", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxPY", v); return v end,
-			LayoutOrder = 3,
+			LayoutOrder = 4,
 		}),
 		PZ = e(MinMaxRow, {
 			Label = "Z", Min = config.MinPZ, Max = config.MaxPZ,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinPZ", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxPZ", v); return v end,
-			LayoutOrder = 4,
+			LayoutOrder = 5,
 		}),
 		RotLabel = e("TextLabel", {
-			Size = UDim2.new(1, 0, 0, 16),
+			Size = UDim2.new(1, 0, 0, 18),
 			BackgroundTransparency = 1,
 			Text = "Rotation (degrees)",
 			TextColor3 = Colors.OFFWHITE,
 			Font = Enum.Font.SourceSansBold,
-			TextSize = 12,
+			TextSize = 14,
 			TextXAlignment = Enum.TextXAlignment.Left,
-			LayoutOrder = 5,
+			LayoutOrder = 6,
 		}),
+		RotHeader = e(MinMaxHeader, { LayoutOrder = 7 }),
 		RX = e(MinMaxRow, {
 			Label = "X", Min = config.MinRX, Max = config.MaxRX,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinRX", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxRX", v); return v end,
-			LayoutOrder = 6,
+			LayoutOrder = 8,
 		}),
 		RY = e(MinMaxRow, {
 			Label = "Y", Min = config.MinRY, Max = config.MaxRY,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinRY", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxRY", v); return v end,
-			LayoutOrder = 7,
+			LayoutOrder = 9,
 		}),
 		RZ = e(MinMaxRow, {
 			Label = "Z", Min = config.MinRZ, Max = config.MaxRZ,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinRZ", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxRZ", v); return v end,
-			LayoutOrder = 8,
+			LayoutOrder = 10,
 		}),
 	})
 end
@@ -1166,12 +1242,12 @@ local function RandomizePropertiesSettings(props: ToolSettingsProps)
 	-- Empty state
 	if #selection == 0 then
 		children.EmptyState = e("TextLabel", {
-			Size = UDim2.new(1, 0, 0, 30),
+			Size = UDim2.new(1, 0, 0, 40),
 			BackgroundTransparency = 1,
 			Text = "Select instances to randomize their properties.",
 			TextColor3 = Colors.OFFWHITE,
 			Font = Enum.Font.SourceSansItalic,
-			TextSize = 14,
+			TextSize = 16,
 			TextWrapped = true,
 			LayoutOrder = 1,
 		})
