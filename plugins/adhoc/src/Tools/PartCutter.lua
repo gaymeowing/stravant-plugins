@@ -592,12 +592,226 @@ local function doCSGCut(
 	end
 end
 
+-- Try to decompose a Block cut into native primitives (Blocks + WedgeParts) when the
+-- cut plane is perpendicular to one of the block's local axes. The cross-section is split
+-- into a "band" (bounding box of the two cut-line/rectangle intersections) containing two
+-- complementary wedges, plus up to 2 rectangular slabs outside the band.
+-- Returns ({negParts}, {posParts}) relative to cutNormal, or (nil, nil) if not applicable.
+local function tryPrimitiveCut(
+	part: BasePart, cutPoint: Vector3, cutNormal: Vector3
+): ({BasePart}?, {BasePart}?)
+	local cf = part.CFrame
+	local size = part.Size
+	local localCutNormal = cf:VectorToObjectSpace(cutNormal)
+	local localCutPoint = cf:PointToObjectSpace(cutPoint)
+
+	-- Find the extrude axis: the local axis with near-zero cutNormal component
+	local absComps = {math.abs(localCutNormal.X), math.abs(localCutNormal.Y), math.abs(localCutNormal.Z)}
+	local extrudeAxis: number? = nil
+	for i, v in absComps do
+		if v < 0.01 then
+			if extrudeAxis then
+				return nil, nil -- multiple near-zero: axis-aligned, handled elsewhere
+			end
+			extrudeAxis = i
+		end
+	end
+	if not extrudeAxis then
+		return nil, nil
+	end
+
+	-- Cross-section axes (the two non-extrude axes)
+	local ca1, ca2: number
+	if extrudeAxis == 1 then
+		ca1, ca2 = 2, 3
+	elseif extrudeAxis == 2 then
+		ca1, ca2 = 1, 3
+	else
+		ca1, ca2 = 1, 2
+	end
+
+	local function comp(v: Vector3, i: number): number
+		if i == 1 then return v.X elseif i == 2 then return v.Y else return v.Z end
+	end
+
+	local h1, h2 = comp(size, ca1) / 2, comp(size, ca2) / 2
+	local n1, n2 = comp(localCutNormal, ca1), comp(localCutNormal, ca2)
+	local p1, p2 = comp(localCutPoint, ca1), comp(localCutPoint, ca2)
+	local dVal = n1 * p1 + n2 * p2
+	local extrudeSize = comp(size, extrudeAxis)
+
+	-- Find the two intersections of the cut line with the rectangle boundary
+	-- Cut line: n1*i1 + n2*i2 = dVal
+	local isects: {{number}} = {}
+	local eps = 0.001
+
+	local function addIsect(i1: number, i2: number)
+		for _, is in isects do
+			if math.abs(is[1] - i1) < eps and math.abs(is[2] - i2) < eps then
+				return
+			end
+		end
+		table.insert(isects, {i1, i2})
+	end
+
+	if math.abs(n1) > eps then
+		local ti1 = (dVal - n2 * h2) / n1 -- top edge (i2 = +h2)
+		if ti1 >= -h1 - eps and ti1 <= h1 + eps then
+			addIsect(math.clamp(ti1, -h1, h1), h2)
+		end
+		local bi1 = (dVal + n2 * h2) / n1 -- bottom edge (i2 = -h2)
+		if bi1 >= -h1 - eps and bi1 <= h1 + eps then
+			addIsect(math.clamp(bi1, -h1, h1), -h2)
+		end
+	end
+	if math.abs(n2) > eps then
+		local ri2 = (dVal - n1 * h1) / n2 -- right edge (i1 = +h1)
+		if ri2 >= -h2 - eps and ri2 <= h2 + eps then
+			addIsect(h1, math.clamp(ri2, -h2, h2))
+		end
+		local li2 = (dVal + n1 * h1) / n2 -- left edge (i1 = -h1)
+		if li2 >= -h2 - eps and li2 <= h2 + eps then
+			addIsect(-h1, math.clamp(li2, -h2, h2))
+		end
+	end
+
+	if #isects ~= 2 then
+		return nil, nil
+	end
+
+	-- Band = bounding box of the two intersection points
+	local b1lo = math.min(isects[1][1], isects[2][1])
+	local b1hi = math.max(isects[1][1], isects[2][1])
+	local b2lo = math.min(isects[1][2], isects[2][2])
+	local b2hi = math.max(isects[1][2], isects[2][2])
+	local bw1, bw2 = b1hi - b1lo, b2hi - b2lo
+
+	if bw1 < 0.001 or bw2 < 0.001 then
+		return nil, nil -- degenerate band
+	end
+
+	-- Signed distance from 2D point to cut line (positive = cutNormal side)
+	local function sdist(c1: number, c2: number): number
+		return n1 * (c1 - p1) + n2 * (c2 - p2)
+	end
+
+	-- World-space axis vectors
+	local kAxes = {Vector3.xAxis, Vector3.yAxis, Vector3.zAxis}
+	local extDir = cf:VectorToWorldSpace(kAxes[extrudeAxis])
+	local cd1 = cf:VectorToWorldSpace(kAxes[ca1])
+	local cd2 = cf:VectorToWorldSpace(kAxes[ca2])
+
+	-- Build a Vector3 with components assigned by axis index
+	local function makeVec(extVal: number, c1Val: number, c2Val: number): Vector3
+		local v = {0, 0, 0}
+		v[extrudeAxis] = extVal
+		v[ca1] = c1Val
+		v[ca2] = c2Val
+		return Vector3.new(v[1], v[2], v[3])
+	end
+
+	local parent = part.Parent
+	local negParts: {BasePart} = {}
+	local posParts: {BasePart} = {}
+
+	-- Create a Block piece at the given cross-section center/size
+	local function addBlock(center1: number, center2: number, w1: number, w2: number)
+		local block = Instance.new("Part")
+		block.Shape = Enum.PartType.Block
+		block.Size = makeVec(extrudeSize, w1, w2)
+		block.CFrame = cf * CFrame.new(makeVec(0, center1, center2))
+		copyProperties(block, part)
+		block.Name = part.Name
+		block.Parent = parent
+		if sdist(center1, center2) > 0 then
+			table.insert(posParts, block)
+		else
+			table.insert(negParts, block)
+		end
+	end
+
+	-- Create a WedgePart piece in the band
+	local function addWedge(
+		rightAngle1: number, rightAngle2: number,
+		leg1Sign: number, leg2Sign: number,
+		bCenter1: number, bCenter2: number,
+		legLen1: number, legLen2: number
+	)
+		-- WedgePart right angle at local (-W/2, -H/2, +D/2), legs along +Y and -Z
+		-- Map: Y = leg along ca1, local +Z = opposite of leg along ca2
+		local yDir = cd1 * leg1Sign
+		local zExpected = -cd2 * leg2Sign
+		local xDir = extDir
+		if xDir:Cross(yDir):Dot(zExpected) < 0 then
+			xDir = -xDir
+		end
+
+		local wedge = Instance.new("WedgePart")
+		wedge.Size = Vector3.new(extrudeSize, legLen1, legLen2)
+		wedge.CFrame = CFrame.fromMatrix(
+			cf.Position + cd1 * bCenter1 + cd2 * bCenter2, xDir, yDir
+		)
+		copyProperties(wedge, part)
+		wedge.Name = part.Name
+		wedge.Parent = parent
+		if sdist(rightAngle1, rightAngle2) > 0 then
+			table.insert(posParts, wedge)
+		else
+			table.insert(negParts, wedge)
+		end
+	end
+
+	-- Slab blocks outside the band (non-overlapping tiling of the remainder)
+	local minSlab = 0.001
+	if b1lo - (-h1) > minSlab then -- left slab (full ca2 height)
+		addBlock((-h1 + b1lo) / 2, 0, b1lo + h1, h2 * 2)
+	end
+	if h1 - b1hi > minSlab then -- right slab (full ca2 height)
+		addBlock((b1hi + h1) / 2, 0, h1 - b1hi, h2 * 2)
+	end
+	if b2lo - (-h2) > minSlab then -- bottom slab (between ca1 slabs)
+		addBlock((b1lo + b1hi) / 2, (-h2 + b2lo) / 2, bw1, b2lo + h2)
+	end
+	if h2 - b2hi > minSlab then -- top slab (between ca1 slabs)
+		addBlock((b1lo + b1hi) / 2, (b2hi + h2) / 2, bw1, h2 - b2hi)
+	end
+
+	-- Two complementary wedges in the band
+	-- Determine which diagonal the cut line follows by checking which band corner I1 is at
+	local i1AtLo = math.abs(isects[1][1] - b1lo) < math.abs(isects[1][1] - b1hi)
+	local i2AtLo = math.abs(isects[1][2] - b2lo) < math.abs(isects[1][2] - b2hi)
+	local bandC1, bandC2 = (b1lo + b1hi) / 2, (b2lo + b2hi) / 2
+
+	if i1AtLo == i2AtLo then
+		-- Diagonal from (b1lo,b2lo) to (b1hi,b2hi)
+		-- Wedge right angles at the other two corners
+		addWedge(b1lo, b2hi, 1, -1, bandC1, bandC2, bw1, bw2)
+		addWedge(b1hi, b2lo, -1, 1, bandC1, bandC2, bw1, bw2)
+	else
+		-- Diagonal from (b1lo,b2hi) to (b1hi,b2lo)
+		addWedge(b1lo, b2lo, 1, 1, bandC1, bandC2, bw1, bw2)
+		addWedge(b1hi, b2hi, -1, -1, bandC1, bandC2, bw1, bw2)
+	end
+
+	part.Parent = nil
+
+	if #negParts == 0 or #posParts == 0 then
+		-- Degenerate cut: undo and fall back to CSG
+		for _, p in negParts do p.Parent = nil end
+		for _, p in posParts do p.Parent = nil end
+		part.Parent = parent
+		return nil, nil
+	end
+
+	return negParts, posParts
+end
+
 -- Determine whether to use simple cut or CSG, and execute.
--- Returns (errorMsg?, negHalf?, posHalf?) — negHalf/posHalf relative to cutNormal.
--- On failure, errorMsg is set and halves are nil; the original part is unchanged.
+-- Returns (errorMsg?, negParts?, posParts?) — part arrays relative to cutNormal direction.
+-- On failure, errorMsg is set and part arrays are nil; the original part is unchanged.
 local function executeCut(
 	part: BasePart, cutPoint: Vector3, cutDir: Vector3, faceNormal: Vector3
-): (string?, BasePart?, BasePart?)
+): (string?, {BasePart}?, {BasePart}?)
 	local cutNormal = cutDir:Cross(faceNormal).Unit
 
 	local axis = getAxisAligned(part, cutNormal)
@@ -606,27 +820,35 @@ local function executeCut(
 		local isBlock = part:IsA("Part") and (part :: Part).Shape == Enum.PartType.Block
 		if isBlock then
 			local neg, pos = doSimpleCut(part, cutPoint, cutNormal, axis)
-			return nil, neg, pos
+			return nil, {neg}, {pos}
 		end
 		-- Cylinder: simple cut along X (length axis) only
 		local isCylinder = part:IsA("Part") and (part :: Part).Shape == Enum.PartType.Cylinder
 		if isCylinder and axis == "X" then
 			local neg, pos = doSimpleCut(part, cutPoint, cutNormal, axis)
-			return nil, neg, pos
+			return nil, {neg}, {pos}
 		end
 		-- Wedge: simple cut along X (width axis) only
 		local isWedge = (part:IsA("Part") and (part :: Part).Shape == Enum.PartType.Wedge)
 			or part:IsA("WedgePart")
 		if isWedge and axis == "X" then
 			local neg, pos = doSimpleCut(part, cutPoint, cutNormal, axis)
-			return nil, neg, pos
+			return nil, {neg}, {pos}
+		end
+	end
+
+	-- Try primitive decomposition for blocks with angled cuts perpendicular to one axis
+	if part:IsA("Part") and (part :: Part).Shape == Enum.PartType.Block then
+		local negParts, posParts = tryPrimitiveCut(part, cutPoint, cutNormal)
+		if negParts then
+			return nil, negParts, posParts
 		end
 	end
 
 	-- General case: CSG
 	local ok, neg, pos = doCSGCut(part, cutPoint, cutNormal)
 	if ok then
-		return nil, neg, pos
+		return nil, {neg :: BasePart}, {pos :: BasePart}
 	end
 
 	if part:IsA("MeshPart") then
@@ -645,7 +867,7 @@ local function cutAndKeepSide(
 	cutNormal: Vector3,
 	keepSide: string
 ): string?
-	local err, negHalf, posHalf = executeCut(part, cutPoint, cutDir, faceNormal)
+	local err, negParts, posParts = executeCut(part, cutPoint, cutDir, faceNormal)
 
 	if err then
 		-- Cut failed; part is still intact. Classify by center and remove if wrong side.
@@ -658,11 +880,15 @@ local function cutAndKeepSide(
 		return err
 	end
 
-	-- Remove the half on the wrong side
-	if keepSide == "negative" and posHalf then
-		posHalf.Parent = nil
-	elseif keepSide == "positive" and negHalf then
-		negHalf.Parent = nil
+	-- Remove all parts on the wrong side
+	if keepSide == "negative" and posParts then
+		for _, p in posParts do
+			p.Parent = nil
+		end
+	elseif keepSide == "positive" and negParts then
+		for _, p in negParts do
+			p.Parent = nil
+		end
 	end
 	return nil
 end
