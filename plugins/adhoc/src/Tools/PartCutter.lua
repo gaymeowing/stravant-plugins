@@ -918,7 +918,8 @@ end
 -- Returns (errorMsg?, negParts?, posParts?) — part arrays relative to cutNormal direction.
 -- On failure, errorMsg is set and part arrays are nil; the original part is unchanged.
 local function executeCut(
-	part: BasePart, cutPoint: Vector3, cutDir: Vector3, faceNormal: Vector3
+	part: BasePart, cutPoint: Vector3, cutDir: Vector3, faceNormal: Vector3,
+	avoidCSG: boolean
 ): (string?, {BasePart}?, {BasePart}?)
 	local cutNormal = cutDir:Cross(faceNormal).Unit
 
@@ -943,14 +944,14 @@ local function executeCut(
 			local neg, pos = doSimpleCut(part, cutPoint, cutNormal, axis)
 			return nil, {neg}, {pos}
 		end
-		if isWedge and (axis == "Y" or axis == "Z") then
+		if avoidCSG and isWedge and (axis == "Y" or axis == "Z") then
 			local negParts, posParts = doWedgeAxisCut(part, cutPoint, cutNormal, axis)
 			return nil, negParts, posParts
 		end
 	end
 
 	-- Try primitive decomposition for blocks with angled cuts perpendicular to one axis
-	if part:IsA("Part") and (part :: Part).Shape == Enum.PartType.Block then
+	if avoidCSG and part:IsA("Part") and (part :: Part).Shape == Enum.PartType.Block then
 		local negParts, posParts = tryPrimitiveCut(part, cutPoint, cutNormal)
 		if negParts then
 			return nil, negParts, posParts
@@ -977,9 +978,10 @@ local function cutAndKeepSide(
 	cutDir: Vector3,
 	faceNormal: Vector3,
 	cutNormal: Vector3,
-	keepSide: string
+	keepSide: string,
+	avoidCSG: boolean
 ): string?
-	local err, negParts, posParts = executeCut(part, cutPoint, cutDir, faceNormal)
+	local err, negParts, posParts = executeCut(part, cutPoint, cutDir, faceNormal, avoidCSG)
 
 	if err then
 		-- Cut failed; part is still intact. Classify by center and remove if wrong side.
@@ -1010,7 +1012,8 @@ local function executeModelCut(
 	model: Model,
 	cutPoint: Vector3,
 	cutDir: Vector3,
-	faceNormal: Vector3
+	faceNormal: Vector3,
+	avoidCSG: boolean
 ): {string}
 	local cutNormal = cutDir:Cross(faceNormal).Unit
 	local errors: {string} = {}
@@ -1068,7 +1071,7 @@ local function executeModelCut(
 		part.Parent = nil
 	end
 	for _, part in straddlingParts do
-		local err = cutAndKeepSide(part, cutPoint, cutDir, faceNormal, cutNormal, "negative")
+		local err = cutAndKeepSide(part, cutPoint, cutDir, faceNormal, cutNormal, "negative", avoidCSG)
 		if err then
 			table.insert(errors, err)
 		end
@@ -1084,7 +1087,7 @@ local function executeModelCut(
 	for _, part in straddlingParts do
 		local clonedPart = origToClone[part]
 		if clonedPart then
-			local err = cutAndKeepSide(clonedPart, cutPoint, cutDir, faceNormal, cutNormal, "positive")
+			local err = cutAndKeepSide(clonedPart, cutPoint, cutDir, faceNormal, cutNormal, "positive", avoidCSG)
 			if err then
 				table.insert(errors, err)
 			end
@@ -1104,6 +1107,7 @@ end
 local function PartCutterSettings(props: ToolSettingsProps)
 	local isModelMode = props.GetSetting("SplitMode") == "Model"
 	local isTopLevel = props.GetSetting("ModelScope") == "TopLevel"
+	local isAvoidCSG = props.GetSetting("AvoidCSG") ~= false
 
 	local stateText = if mState == "idle"
 		then "Click an edge to set cut point"
@@ -1120,6 +1124,14 @@ local function PartCutterSettings(props: ToolSettingsProps)
 			LayoutOrder = 1,
 			Changed = function(checked: boolean)
 				props.SetSetting("SplitMode", if checked then "Model" else "Part")
+			end,
+		}),
+		AvoidCSGCheckbox = e(Checkbox, {
+			Label = "Prefer Simple Part Types",
+			Checked = isAvoidCSG,
+			LayoutOrder = 3,
+			Changed = function(checked: boolean)
+				props.SetSetting("AvoidCSG", checked)
 			end,
 		}),
 		StatusLabel = e("TextLabel", {
@@ -1455,19 +1467,20 @@ local PartCutter: ToolTypes.ToolDefinition = {
 
 			clearState()
 
+			local avoidCSG = ctx.GetSetting("AvoidCSG") ~= false
 			local id = ctx.BeginRecording("Part Cut")
 			local errors: {string} = {}
 			if #targetModels > 0 then
 				-- Model mode: split all affected models
 				for _, model in targetModels do
-					local modelErrors = executeModelCut(model, cutPoint, cutDir, faceNormal)
+					local modelErrors = executeModelCut(model, cutPoint, cutDir, faceNormal, avoidCSG)
 					for _, err in modelErrors do
 						table.insert(errors, err)
 					end
 				end
 				-- Cut loose parts (not in any model) individually
 				for _, part in looseParts do
-					local err = executeCut(part, cutPoint, cutDir, faceNormal)
+					local err = executeCut(part, cutPoint, cutDir, faceNormal, avoidCSG)
 					if err then
 						table.insert(errors, err)
 					end
@@ -1475,7 +1488,7 @@ local PartCutter: ToolTypes.ToolDefinition = {
 			else
 				-- Part mode: cut individual parts
 				for _, partToCut in partsTocut do
-					local err = executeCut(partToCut, cutPoint, cutDir, faceNormal)
+					local err = executeCut(partToCut, cutPoint, cutDir, faceNormal, avoidCSG)
 					if err then
 						table.insert(errors, err)
 					end
@@ -1499,6 +1512,7 @@ local PartCutter: ToolTypes.ToolDefinition = {
 	DefaultSettings = {
 		SplitMode = "Part",
 		ModelScope = "Parent",
+		AvoidCSG = true,
 	},
 }
 

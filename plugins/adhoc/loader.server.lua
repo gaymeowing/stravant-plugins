@@ -55,6 +55,9 @@ local panel = plugin:CreateDockWidgetPluginGuiAsync("AdhocToolsPanel", params)
 local panels: { [string]: DockWidgetPluginGui } = _G.__PluginPanels or {}
 _G.__PluginPanels = panels
 panels["AdhocTools"] = panel
+plugin.Unloading:Connect(function()
+	panels["AdhocTools"] = nil
+end)
 
 local loaded = false
 local function doInitialLoad()
