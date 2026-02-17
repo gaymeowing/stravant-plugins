@@ -344,4 +344,230 @@ return function(t: TestTypes.TestContext)
 		Selection:Set({})
 		cleanupParts(parts)
 	end)
+
+	t.test("UDim panel", function()
+		local parts = createTestParts()
+		Selection:Set(parts)
+		task.wait()
+
+		local screenGui = Instance.new("ScreenGui")
+		screenGui.Parent = game:GetService("CoreGui")
+
+		local settings: { [string]: any } = {
+			Panels = {
+				{
+					PropertyName = "SomeUDim",
+					TypeName = "UDim",
+					Config = { MinScale = 0, MaxScale = 1, MinOffset = 0, MaxOffset = 100 },
+				},
+			},
+		}
+		local root = mountSettings(screenGui, settings)
+
+		root:unmount()
+		screenGui:Destroy()
+		Selection:Set({})
+		cleanupParts(parts)
+	end)
+
+	t.test("UDim2 panel", function()
+		local parts = createTestParts()
+		Selection:Set(parts)
+		task.wait()
+
+		local screenGui = Instance.new("ScreenGui")
+		screenGui.Parent = game:GetService("CoreGui")
+
+		local settings: { [string]: any } = {
+			Panels = {
+				{
+					PropertyName = "SomeUDim2",
+					TypeName = "UDim2",
+					Config = {
+						MinXScale = 0, MaxXScale = 1, MinXOffset = 0, MaxXOffset = 100,
+						MinYScale = 0, MaxYScale = 1, MinYOffset = 0, MaxYOffset = 100,
+					},
+				},
+			},
+		}
+		local root = mountSettings(screenGui, settings)
+
+		root:unmount()
+		screenGui:Destroy()
+		Selection:Set({})
+		cleanupParts(parts)
+	end)
+
+	t.test("Vector2 panel", function()
+		local parts = createTestParts()
+		Selection:Set(parts)
+		task.wait()
+
+		local screenGui = Instance.new("ScreenGui")
+		screenGui.Parent = game:GetService("CoreGui")
+
+		local settings: { [string]: any } = {
+			Panels = {
+				{
+					PropertyName = "SomeVector2",
+					TypeName = "Vector2",
+					Config = { MinX = -5, MaxX = 5, MinY = -3, MaxY = 3 },
+				},
+			},
+		}
+		local root = mountSettings(screenGui, settings)
+
+		root:unmount()
+		screenGui:Destroy()
+		Selection:Set({})
+		cleanupParts(parts)
+	end)
+
+	t.test("unsupported type", function()
+		local parts = createTestParts()
+		Selection:Set(parts)
+		task.wait()
+
+		local screenGui = Instance.new("ScreenGui")
+		screenGui.Parent = game:GetService("CoreGui")
+
+		local settings: { [string]: any } = {
+			Panels = {
+				{
+					PropertyName = "SomeProp",
+					TypeName = "Instance",
+					Config = {},
+				},
+			},
+		}
+		local root = mountSettings(screenGui, settings)
+
+		root:unmount()
+		screenGui:Destroy()
+		Selection:Set({})
+		cleanupParts(parts)
+	end)
+
+	t.test("enum panel - small enum (Shape)", function()
+		local parts = createTestParts()
+		Selection:Set(parts)
+		task.wait()
+
+		local screenGui = Instance.new("ScreenGui")
+		screenGui.Parent = game:GetService("CoreGui")
+
+		local enabled: { [string]: boolean } = {}
+		for _, item in Enum.PartType:GetEnumItems() do
+			enabled[item.Name] = true
+		end
+
+		local settings: { [string]: any } = {
+			Panels = {
+				{
+					PropertyName = "Shape",
+					TypeName = "EnumItem",
+					Config = { EnabledValues = enabled },
+				},
+			},
+		}
+		local root = mountSettings(screenGui, settings)
+
+		root:unmount()
+		screenGui:Destroy()
+		Selection:Set({})
+		cleanupParts(parts)
+	end)
+
+	t.test("no selection with existing panels", function()
+		Selection:Set({})
+		task.wait()
+
+		local screenGui = Instance.new("ScreenGui")
+		screenGui.Parent = game:GetService("CoreGui")
+
+		local settings: { [string]: any } = {
+			Panels = {
+				{
+					PropertyName = "Transparency",
+					TypeName = "number",
+					Config = { Min = 0, Max = 1 },
+				},
+				{
+					PropertyName = "Color",
+					TypeName = "Color3",
+					Config = {
+						ColorSpace = "HSV",
+						MinH = 0, MaxH = 360,
+						MinS = 0, MaxS = 100,
+						MinV = 0, MaxV = 100,
+						MinR = 0, MaxR = 255,
+						MinG = 0, MaxG = 255,
+						MinB = 0, MaxB = 255,
+					},
+				},
+			},
+		}
+		local root = mountSettings(screenGui, settings)
+
+		root:unmount()
+		screenGui:Destroy()
+	end)
+
+	t.test("kitchen sink - all panel types", function()
+		local parts = createTestParts()
+		Selection:Set(parts)
+		task.wait()
+
+		local screenGui = Instance.new("ScreenGui")
+		screenGui.Parent = game:GetService("CoreGui")
+
+		local shapeEnabled: { [string]: boolean } = {}
+		for _, item in Enum.PartType:GetEnumItems() do
+			shapeEnabled[item.Name] = true
+		end
+
+		local settings: { [string]: any } = {
+			Panels = {
+				{
+					PropertyName = "Transparency",
+					TypeName = "number",
+					Config = { Min = 0, Max = 1 },
+				},
+				{
+					PropertyName = "Color",
+					TypeName = "Color3",
+					Config = {
+						ColorSpace = "HSV",
+						MinH = 0, MaxH = 360,
+						MinS = 50, MaxS = 100,
+						MinV = 50, MaxV = 100,
+						MinR = 0, MaxR = 255,
+						MinG = 0, MaxG = 255,
+						MinB = 0, MaxB = 255,
+					},
+				},
+				{
+					PropertyName = "Size",
+					TypeName = "Vector3",
+					Config = { MinX = 1, MaxX = 10, MinY = 1, MaxY = 5, MinZ = 1, MaxZ = 8 },
+				},
+				{
+					PropertyName = "Anchored",
+					TypeName = "boolean",
+					Config = { Probability = 75 },
+				},
+				{
+					PropertyName = "Shape",
+					TypeName = "EnumItem",
+					Config = { EnabledValues = shapeEnabled },
+				},
+			},
+		}
+		local root = mountSettings(screenGui, settings)
+
+		root:unmount()
+		screenGui:Destroy()
+		Selection:Set({})
+		cleanupParts(parts)
+	end)
 end

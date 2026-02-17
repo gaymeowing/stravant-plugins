@@ -479,29 +479,62 @@ local function NumberEditor(props: {
 	LayoutOrder: number?,
 })
 	return e("Frame", {
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(1, 0, 0, 24),
 		BackgroundTransparency = 1,
 		LayoutOrder = props.LayoutOrder,
 	}, {
 		ListLayout = e("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
 			SortOrder = Enum.SortOrder.LayoutOrder,
-			Padding = UDim.new(0, 2),
+			Padding = UDim.new(0, 4),
 		}),
-		Header = e(MinMaxHeader, { LayoutOrder = 1 }),
-		Row = e(MinMaxRow, {
-			Label = "",
-			Min = props.Config.Min,
-			Max = props.Config.Max,
-			OnMinChanged = function(v: number)
+		MinLabel = e("TextLabel", {
+			Size = UDim2.fromOffset(26, 24),
+			BackgroundTransparency = 1,
+			Text = "Min",
+			TextColor3 = Colors.OFFWHITE,
+			Font = Enum.Font.SourceSansItalic,
+			TextSize = 14,
+			TextXAlignment = Enum.TextXAlignment.Right,
+			LayoutOrder = 1,
+		}),
+		MinInput = e(NumberInput, {
+			Value = props.Config.Min,
+			ValueEntered = function(v: number)
 				props.OnConfigChanged("Min", v)
 				return v
 			end,
-			OnMaxChanged = function(v: number)
+			Grow = true,
+			LayoutOrder = 2,
+		}),
+		Dash = e("TextLabel", {
+			Size = UDim2.fromOffset(kDashWidth, 24),
+			BackgroundTransparency = 1,
+			Text = "\u{2013}",
+			TextColor3 = Colors.OFFWHITE,
+			Font = Enum.Font.SourceSansBold,
+			TextSize = 16,
+			LayoutOrder = 3,
+		}),
+		MaxLabel = e("TextLabel", {
+			Size = UDim2.fromOffset(26, 24),
+			BackgroundTransparency = 1,
+			Text = "Max",
+			TextColor3 = Colors.OFFWHITE,
+			Font = Enum.Font.SourceSansItalic,
+			TextSize = 14,
+			TextXAlignment = Enum.TextXAlignment.Right,
+			LayoutOrder = 4,
+		}),
+		MaxInput = e(NumberInput, {
+			Value = props.Config.Max,
+			ValueEntered = function(v: number)
 				props.OnConfigChanged("Max", v)
 				return v
 			end,
-			LayoutOrder = 2,
+			Grow = true,
+			LayoutOrder = 5,
 		}),
 	})
 end
@@ -703,13 +736,13 @@ local function UDimEditor(props: {
 		}),
 		Header = e(MinMaxHeader, { LayoutOrder = 1 }),
 		Scale = e(MinMaxRow, {
-			Label = "S", Min = config.MinScale, Max = config.MaxScale,
+			Label = "Scl", Min = config.MinScale, Max = config.MaxScale,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinScale", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxScale", v); return v end,
 			LayoutOrder = 2,
 		}),
 		Offset = e(MinMaxRow, {
-			Label = "O", Min = config.MinOffset, Max = config.MaxOffset,
+			Label = "Off", Min = config.MinOffset, Max = config.MaxOffset,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinOffset", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxOffset", v); return v end,
 			LayoutOrder = 3,
@@ -733,30 +766,51 @@ local function UDim2Editor(props: {
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Padding = UDim.new(0, 2),
 		}),
-		Header = e(MinMaxHeader, { LayoutOrder = 1 }),
+		XLabel = e("TextLabel", {
+			Size = UDim2.new(1, 0, 0, 18),
+			BackgroundTransparency = 1,
+			Text = "X",
+			TextColor3 = Colors.OFFWHITE,
+			Font = Enum.Font.SourceSansBold,
+			TextSize = 14,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			LayoutOrder = 1,
+		}),
+		XHeader = e(MinMaxHeader, { LayoutOrder = 2 }),
 		XScale = e(MinMaxRow, {
-			Label = "XS", Min = config.MinXScale, Max = config.MaxXScale,
+			Label = "Scl", Min = config.MinXScale, Max = config.MaxXScale,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinXScale", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxXScale", v); return v end,
-			LayoutOrder = 2,
-		}),
-		XOffset = e(MinMaxRow, {
-			Label = "XO", Min = config.MinXOffset, Max = config.MaxXOffset,
-			OnMinChanged = function(v: number) props.OnConfigChanged("MinXOffset", v); return v end,
-			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxXOffset", v); return v end,
 			LayoutOrder = 3,
 		}),
-		YScale = e(MinMaxRow, {
-			Label = "YS", Min = config.MinYScale, Max = config.MaxYScale,
-			OnMinChanged = function(v: number) props.OnConfigChanged("MinYScale", v); return v end,
-			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxYScale", v); return v end,
+		XOffset = e(MinMaxRow, {
+			Label = "Off", Min = config.MinXOffset, Max = config.MaxXOffset,
+			OnMinChanged = function(v: number) props.OnConfigChanged("MinXOffset", v); return v end,
+			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxXOffset", v); return v end,
 			LayoutOrder = 4,
 		}),
+		YLabel = e("TextLabel", {
+			Size = UDim2.new(1, 0, 0, 18),
+			BackgroundTransparency = 1,
+			Text = "Y",
+			TextColor3 = Colors.OFFWHITE,
+			Font = Enum.Font.SourceSansBold,
+			TextSize = 14,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			LayoutOrder = 5,
+		}),
+		YHeader = e(MinMaxHeader, { LayoutOrder = 6 }),
+		YScale = e(MinMaxRow, {
+			Label = "Scl", Min = config.MinYScale, Max = config.MaxYScale,
+			OnMinChanged = function(v: number) props.OnConfigChanged("MinYScale", v); return v end,
+			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxYScale", v); return v end,
+			LayoutOrder = 7,
+		}),
 		YOffset = e(MinMaxRow, {
-			Label = "YO", Min = config.MinYOffset, Max = config.MaxYOffset,
+			Label = "Off", Min = config.MinYOffset, Max = config.MaxYOffset,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinYOffset", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxYOffset", v); return v end,
-			LayoutOrder = 5,
+			LayoutOrder = 8,
 		}),
 	})
 end
@@ -838,6 +892,10 @@ local function CFrameEditor(props: {
 	})
 end
 
+local kCheckboxHeight = 22
+local kCheckboxPadding = 1
+local kMaxVisibleEnumItems = 8
+
 local function EnumItemEditor(props: {
 	Config: { [string]: any },
 	EnumType: Enum,
@@ -847,14 +905,22 @@ local function EnumItemEditor(props: {
 	local enabled = props.Config.EnabledValues :: { [string]: boolean }
 	local items = props.EnumType:GetEnumItems()
 
-	local children: { [string]: any } = {}
-	children.ListLayout = e("UIListLayout", {
+	local function setAll(value: boolean)
+		local newEnabled: { [string]: boolean } = {}
+		for _, item in items do
+			newEnabled[item.Name] = value
+		end
+		props.OnConfigChanged("EnabledValues", newEnabled)
+	end
+
+	local checkboxChildren: { [string]: any } = {}
+	checkboxChildren.ListLayout = e("UIListLayout", {
 		SortOrder = Enum.SortOrder.LayoutOrder,
-		Padding = UDim.new(0, 0),
+		Padding = UDim.new(0, kCheckboxPadding),
 	})
 
 	for i, item in items do
-		children[item.Name] = e(Checkbox, {
+		checkboxChildren[item.Name] = e(Checkbox, {
 			Label = item.Name,
 			Checked = if enabled[item.Name] == nil then false else enabled[item.Name],
 			Changed = function(checked: boolean)
@@ -866,12 +932,82 @@ local function EnumItemEditor(props: {
 		})
 	end
 
+	local totalHeight = #items * (kCheckboxHeight + kCheckboxPadding) - kCheckboxPadding
+	local needsScroll = #items > kMaxVisibleEnumItems
+	local visibleHeight = if needsScroll
+		then kMaxVisibleEnumItems * (kCheckboxHeight + kCheckboxPadding) - kCheckboxPadding
+		else totalHeight
+
 	return e("Frame", {
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundTransparency = 1,
 		LayoutOrder = props.LayoutOrder,
-	}, children)
+	}, {
+		ListLayout = e("UIListLayout", {
+			SortOrder = Enum.SortOrder.LayoutOrder,
+			Padding = UDim.new(0, 2),
+		}),
+		Buttons = e("Frame", {
+			Size = UDim2.new(1, 0, 0, 22),
+			BackgroundTransparency = 1,
+			LayoutOrder = 1,
+		}, {
+			Layout = e("UIListLayout", {
+				FillDirection = Enum.FillDirection.Horizontal,
+				SortOrder = Enum.SortOrder.LayoutOrder,
+				Padding = UDim.new(0, 4),
+			}),
+			AllButton = e("TextButton", {
+				Size = UDim2.fromOffset(36, 22),
+				BackgroundColor3 = Colors.GREY,
+				AutoButtonColor = true,
+				Text = "All",
+				TextColor3 = Colors.WHITE,
+				Font = Enum.Font.SourceSans,
+				TextSize = 14,
+				BorderSizePixel = 0,
+				LayoutOrder = 1,
+				[React.Event.MouseButton1Click] = function()
+					setAll(true)
+				end,
+			}, {
+				Corner = e("UICorner", { CornerRadius = UDim.new(0, 3) }),
+			}),
+			NoneButton = e("TextButton", {
+				Size = UDim2.fromOffset(42, 22),
+				BackgroundColor3 = Colors.GREY,
+				AutoButtonColor = true,
+				Text = "None",
+				TextColor3 = Colors.WHITE,
+				Font = Enum.Font.SourceSans,
+				TextSize = 14,
+				BorderSizePixel = 0,
+				LayoutOrder = 2,
+				[React.Event.MouseButton1Click] = function()
+					setAll(false)
+				end,
+			}, {
+				Corner = e("UICorner", { CornerRadius = UDim.new(0, 3) }),
+			}),
+		}),
+		Items = if needsScroll
+			then e("ScrollingFrame", {
+				Size = UDim2.new(1, 0, 0, visibleHeight),
+				CanvasSize = UDim2.fromScale(1, 0),
+				AutomaticCanvasSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				ScrollBarThickness = 3,
+				ScrollBarImageColor3 = Colors.OFFWHITE,
+				LayoutOrder = 2,
+			}, checkboxChildren)
+			else e("Frame", {
+				Size = UDim2.new(1, 0, 0, visibleHeight),
+				BackgroundTransparency = 1,
+				LayoutOrder = 2,
+			}, checkboxChildren),
+	})
 end
 
 --------------------------------------------------------------------------------

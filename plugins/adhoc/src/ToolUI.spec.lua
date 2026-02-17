@@ -72,23 +72,17 @@ return function(t: TestTypes.TestContext)
 				screenGui.Parent = game:GetService("CoreGui")
 
 				local root = ReactRoblox.createRoot(screenGui)
-				root:render(e(tool.RenderSettings :: any, props))
-
-				-- Let React process the render (may need multiple frames)
-				local rendered = false
-				for _ = 1, 10 do
-					task.wait()
-					if #screenGui:GetChildren() > 0 then
-						rendered = true
-						break
-					end
-				end
+				ReactRoblox.act(function()
+					root:render(e(tool.RenderSettings :: any, props))
+				end)
 
 				-- Verify something was rendered
-				t.expect(rendered).toBe(true)
+				t.expect(#screenGui:GetChildren() > 0).toBe(true)
 
 				-- Cleanup
-				root:unmount()
+				ReactRoblox.act(function()
+					root:unmount()
+				end)
 				screenGui:Destroy()
 			end)
 		end
