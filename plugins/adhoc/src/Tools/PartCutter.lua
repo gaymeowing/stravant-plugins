@@ -241,7 +241,6 @@ local mSetHighlight: ((BasePart?) -> ())? = nil
 local mInputBeganCn: RBXScriptConnection? = nil
 
 -- Adornments
-local mEdgeHighlight: CylinderHandleAdornment? = nil
 local mSnapPoint: SphereHandleAdornment? = nil
 local mCutLine: CylinderHandleAdornment? = nil
 local mPartHighlights: {Highlight} = {}
@@ -254,10 +253,6 @@ local function clearPartHighlights()
 end
 
 local function clearAdornments()
-	if mEdgeHighlight then
-		mEdgeHighlight:Destroy()
-		mEdgeHighlight = nil
-	end
 	if mSnapPoint then
 		mSnapPoint:Destroy()
 		mSnapPoint = nil
@@ -326,27 +321,6 @@ end
 --------------------------------------------------------------------------------
 -- Adornment updates
 --------------------------------------------------------------------------------
-
-local function updateEdgeHighlight(edge: GeometryEdge)
-	if not mEdgeHighlight then
-		local cyl = Instance.new("CylinderHandleAdornment")
-		cyl.Adornee = workspace.Terrain
-		cyl.Color3 = Color3.fromRGB(0, 162, 255)
-		cyl.AlwaysOnTop = true
-		cyl.Radius = 0.06
-		cyl.Parent = CoreGui
-		mEdgeHighlight = cyl
-	end
-	local mid = (edge.a + edge.b) / 2
-	local dir = (edge.b - edge.a)
-	local length = dir.Magnitude
-	if length < 0.001 then
-		return
-	end
-	dir = dir / length
-	mEdgeHighlight.Height = length
-	mEdgeHighlight.CFrame = CFrame.lookAt(mid, mid + dir)
-end
 
 local function updateSnapPoint(position: Vector3)
 	if not mSnapPoint then
@@ -1162,7 +1136,7 @@ local function PartCutterSettings(props: ToolSettingsProps)
 			Text = "Cancel",
 			Height = 28,
 			Disabled = false,
-			Color = Colors.DISABLED_GREY,
+			Color = Colors.DARK_RED,
 			LayoutOrder = 11,
 			OnClick = cancelCut,
 		})
@@ -1242,7 +1216,6 @@ local PartCutter: ToolTypes.ToolDefinition = {
 			if ctx.Target and ctx.TargetPosition and ctx.TargetNormal then
 				local edge = findClosestEdge(ctx.Target, ctx.TargetPosition, ctx.TargetNormal)
 				if edge then
-					updateEdgeHighlight(edge)
 					local snapped = snapPointOnEdge(ctx.TargetPosition, edge)
 					updateSnapPoint(snapped)
 					ctx.SetHighlight(ctx.Target, true)
