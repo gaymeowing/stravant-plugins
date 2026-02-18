@@ -36,6 +36,9 @@ type ReflectedProperty = {
 		Read: SecurityCapabilities?,
 		Write: SecurityCapabilities?,
 	},
+	Display: {
+		DeprecationMessage: string?,
+	}?,
 }
 
 type PropertyInfo = {
@@ -57,7 +60,8 @@ local function getWritableProperties(className: string): { string }
 	end
 	local props: { string } = {}
 	for _, prop in ReflectionService:GetPropertiesOfClass(className) :: { ReflectedProperty } do
-		if prop.Permits.Read and prop.Permits.Write and prop.Name ~= "Parent" then
+		local isDeprecated = prop.Display and prop.Display.DeprecationMessage
+		if prop.Permits.Read and prop.Permits.Write and prop.Name ~= "Parent" and not isDeprecated then
 			table.insert(props, prop.Name)
 		end
 	end
@@ -141,10 +145,6 @@ local function createDefaultConfig(info: PropertyInfo, instances: { Instance }):
 		if minVal == math.huge then
 			minVal, maxVal = 0, 1
 		end
-		if minVal == maxVal then
-			minVal = minVal - 1
-			maxVal = maxVal + 1
-		end
 		return { Min = minVal, Max = maxVal }
 
 	elseif typeName == "boolean" then
@@ -153,12 +153,12 @@ local function createDefaultConfig(info: PropertyInfo, instances: { Instance }):
 	elseif typeName == "Color3" then
 		return {
 			ColorSpace = "HSV",
-			MinH = 0, MaxH = 360,
-			MinS = 0, MaxS = 100,
-			MinV = 0, MaxV = 100,
-			MinR = 0, MaxR = 255,
-			MinG = 0, MaxG = 255,
-			MinB = 0, MaxB = 255,
+			MinH = 0, MaxH = 360, EnableH = true,
+			MinS = 0, MaxS = 100, EnableS = true,
+			MinV = 0, MaxV = 100, EnableV = true,
+			MinR = 0, MaxR = 255, EnableR = true,
+			MinG = 0, MaxG = 255, EnableG = true,
+			MinB = 0, MaxB = 255, EnableB = true,
 		}
 
 	elseif typeName == "Vector3" then
@@ -178,10 +178,11 @@ local function createDefaultConfig(info: PropertyInfo, instances: { Instance }):
 		if minX == math.huge then
 			minX, maxX, minY, maxY, minZ, maxZ = -1, 1, -1, 1, -1, 1
 		end
-		if minX == maxX then minX = minX - 1; maxX = maxX + 1 end
-		if minY == maxY then minY = minY - 1; maxY = maxY + 1 end
-		if minZ == maxZ then minZ = minZ - 1; maxZ = maxZ + 1 end
-		return { MinX = minX, MaxX = maxX, MinY = minY, MaxY = maxY, MinZ = minZ, MaxZ = maxZ }
+		return {
+			MinX = minX, MaxX = maxX, EnableX = true,
+			MinY = minY, MaxY = maxY, EnableY = true,
+			MinZ = minZ, MaxZ = maxZ, EnableZ = true,
+		}
 
 	elseif typeName == "Vector2" then
 		local minX, maxX = math.huge, -math.huge
@@ -198,17 +199,23 @@ local function createDefaultConfig(info: PropertyInfo, instances: { Instance }):
 		if minX == math.huge then
 			minX, maxX, minY, maxY = -1, 1, -1, 1
 		end
-		if minX == maxX then minX = minX - 1; maxX = maxX + 1 end
-		if minY == maxY then minY = minY - 1; maxY = maxY + 1 end
-		return { MinX = minX, MaxX = maxX, MinY = minY, MaxY = maxY }
+		return {
+			MinX = minX, MaxX = maxX, EnableX = true,
+			MinY = minY, MaxY = maxY, EnableY = true,
+		}
 
 	elseif typeName == "UDim" then
-		return { MinScale = 0, MaxScale = 1, MinOffset = 0, MaxOffset = 100 }
+		return {
+			MinScale = 0, MaxScale = 1, EnableScale = true,
+			MinOffset = 0, MaxOffset = 100, EnableOffset = true,
+		}
 
 	elseif typeName == "UDim2" then
 		return {
-			MinXScale = 0, MaxXScale = 1, MinXOffset = 0, MaxXOffset = 100,
-			MinYScale = 0, MaxYScale = 1, MinYOffset = 0, MaxYOffset = 100,
+			MinXScale = 0, MaxXScale = 1, EnableXScale = true,
+			MinXOffset = 0, MaxXOffset = 100, EnableXOffset = true,
+			MinYScale = 0, MaxYScale = 1, EnableYScale = true,
+			MinYOffset = 0, MaxYOffset = 100, EnableYOffset = true,
 		}
 
 	elseif typeName == "CFrame" then
@@ -229,12 +236,13 @@ local function createDefaultConfig(info: PropertyInfo, instances: { Instance }):
 		if minPX == math.huge then
 			minPX, maxPX, minPY, maxPY, minPZ, maxPZ = -10, 10, -10, 10, -10, 10
 		end
-		if minPX == maxPX then minPX = minPX - 1; maxPX = maxPX + 1 end
-		if minPY == maxPY then minPY = minPY - 1; maxPY = maxPY + 1 end
-		if minPZ == maxPZ then minPZ = minPZ - 1; maxPZ = maxPZ + 1 end
 		return {
-			MinPX = minPX, MaxPX = maxPX, MinPY = minPY, MaxPY = maxPY, MinPZ = minPZ, MaxPZ = maxPZ,
-			MinRX = 0, MaxRX = 0, MinRY = 0, MaxRY = 0, MinRZ = 0, MaxRZ = 0,
+			MinPX = minPX, MaxPX = maxPX, EnablePX = true,
+			MinPY = minPY, MaxPY = maxPY, EnablePY = true,
+			MinPZ = minPZ, MaxPZ = maxPZ, EnablePZ = true,
+			MinRX = 0, MaxRX = 0, EnableRX = true,
+			MinRY = 0, MaxRY = 0, EnableRY = true,
+			MinRZ = 0, MaxRZ = 0, EnableRZ = true,
 		}
 
 	elseif typeName == "EnumItem" and info.EnumType then
@@ -254,7 +262,7 @@ end
 
 local mRandom = Random.new()
 
-local function generateRandomValue(config: { [string]: any }, typeName: string, enumType: Enum?): any
+local function generateRandomValue(config: { [string]: any }, typeName: string, enumType: Enum?, currentValue: any?): any
 	if typeName == "number" then
 		return mRandom:NextNumber(config.Min, config.Max)
 
@@ -263,53 +271,76 @@ local function generateRandomValue(config: { [string]: any }, typeName: string, 
 
 	elseif typeName == "Color3" then
 		if config.ColorSpace == "HSV" then
-			local h = mRandom:NextNumber(config.MinH, config.MaxH) / 360
-			local s = mRandom:NextNumber(config.MinS, config.MaxS) / 100
-			local v = mRandom:NextNumber(config.MinV, config.MaxV) / 100
+			local curH, curS, curV = 0, 0, 0
+			if currentValue and typeof(currentValue) == "Color3" then
+				curH, curS, curV = currentValue:ToHSV()
+				curH = curH * 360
+				curS = curS * 100
+				curV = curV * 100
+			end
+			local h = (if config.EnableH ~= false then mRandom:NextNumber(config.MinH, config.MaxH) else curH) / 360
+			local s = (if config.EnableS ~= false then mRandom:NextNumber(config.MinS, config.MaxS) else curS) / 100
+			local v = (if config.EnableV ~= false then mRandom:NextNumber(config.MinV, config.MaxV) else curV) / 100
 			return Color3.fromHSV(h, s, v)
 		else
-			local r = mRandom:NextNumber(config.MinR, config.MaxR) / 255
-			local g = mRandom:NextNumber(config.MinG, config.MaxG) / 255
-			local b = mRandom:NextNumber(config.MinB, config.MaxB) / 255
+			local curR, curG, curB = 0, 0, 0
+			if currentValue and typeof(currentValue) == "Color3" then
+				curR = currentValue.R * 255
+				curG = currentValue.G * 255
+				curB = currentValue.B * 255
+			end
+			local r = (if config.EnableR ~= false then mRandom:NextNumber(config.MinR, config.MaxR) else curR) / 255
+			local g = (if config.EnableG ~= false then mRandom:NextNumber(config.MinG, config.MaxG) else curG) / 255
+			local b = (if config.EnableB ~= false then mRandom:NextNumber(config.MinB, config.MaxB) else curB) / 255
 			return Color3.new(math.clamp(r, 0, 1), math.clamp(g, 0, 1), math.clamp(b, 0, 1))
 		end
 
 	elseif typeName == "Vector3" then
+		local cur = if currentValue and typeof(currentValue) == "Vector3" then currentValue else Vector3.zero
 		return Vector3.new(
-			mRandom:NextNumber(config.MinX, config.MaxX),
-			mRandom:NextNumber(config.MinY, config.MaxY),
-			mRandom:NextNumber(config.MinZ, config.MaxZ)
+			if config.EnableX ~= false then mRandom:NextNumber(config.MinX, config.MaxX) else cur.X,
+			if config.EnableY ~= false then mRandom:NextNumber(config.MinY, config.MaxY) else cur.Y,
+			if config.EnableZ ~= false then mRandom:NextNumber(config.MinZ, config.MaxZ) else cur.Z
 		)
 
 	elseif typeName == "Vector2" then
+		local cur = if currentValue and typeof(currentValue) == "Vector2" then currentValue else Vector2.zero
 		return Vector2.new(
-			mRandom:NextNumber(config.MinX, config.MaxX),
-			mRandom:NextNumber(config.MinY, config.MaxY)
+			if config.EnableX ~= false then mRandom:NextNumber(config.MinX, config.MaxX) else cur.X,
+			if config.EnableY ~= false then mRandom:NextNumber(config.MinY, config.MaxY) else cur.Y
 		)
 
 	elseif typeName == "UDim" then
+		local cur = if currentValue and typeof(currentValue) == "UDim" then currentValue else UDim.new(0, 0)
 		return UDim.new(
-			mRandom:NextNumber(config.MinScale, config.MaxScale),
-			mRandom:NextNumber(config.MinOffset, config.MaxOffset)
+			if config.EnableScale ~= false then mRandom:NextNumber(config.MinScale, config.MaxScale) else cur.Scale,
+			if config.EnableOffset ~= false then mRandom:NextNumber(config.MinOffset, config.MaxOffset) else cur.Offset
 		)
 
 	elseif typeName == "UDim2" then
+		local cur = if currentValue and typeof(currentValue) == "UDim2" then currentValue else UDim2.new()
 		return UDim2.new(
-			mRandom:NextNumber(config.MinXScale, config.MaxXScale),
-			mRandom:NextNumber(config.MinXOffset, config.MaxXOffset),
-			mRandom:NextNumber(config.MinYScale, config.MaxYScale),
-			mRandom:NextNumber(config.MinYOffset, config.MaxYOffset)
+			if config.EnableXScale ~= false then mRandom:NextNumber(config.MinXScale, config.MaxXScale) else cur.X.Scale,
+			if config.EnableXOffset ~= false then mRandom:NextNumber(config.MinXOffset, config.MaxXOffset) else cur.X.Offset,
+			if config.EnableYScale ~= false then mRandom:NextNumber(config.MinYScale, config.MaxYScale) else cur.Y.Scale,
+			if config.EnableYOffset ~= false then mRandom:NextNumber(config.MinYOffset, config.MaxYOffset) else cur.Y.Offset
 		)
 
 	elseif typeName == "CFrame" then
+		local curPos = Vector3.zero
+		local curRX, curRY, curRZ = 0, 0, 0
+		if currentValue and typeof(currentValue) == "CFrame" then
+			curPos = currentValue.Position
+			curRX, curRY, curRZ = currentValue:ToEulerAnglesXYZ()
+		end
 		local pos = Vector3.new(
-			mRandom:NextNumber(config.MinPX, config.MaxPX),
-			mRandom:NextNumber(config.MinPY, config.MaxPY),
-			mRandom:NextNumber(config.MinPZ, config.MaxPZ)
+			if config.EnablePX ~= false then mRandom:NextNumber(config.MinPX, config.MaxPX) else curPos.X,
+			if config.EnablePY ~= false then mRandom:NextNumber(config.MinPY, config.MaxPY) else curPos.Y,
+			if config.EnablePZ ~= false then mRandom:NextNumber(config.MinPZ, config.MaxPZ) else curPos.Z
 		)
-		local rx = math.rad(mRandom:NextNumber(config.MinRX, config.MaxRX))
-		local ry = math.rad(mRandom:NextNumber(config.MinRY, config.MaxRY))
-		local rz = math.rad(mRandom:NextNumber(config.MinRZ, config.MaxRZ))
+		local rx = if config.EnableRX ~= false then math.rad(mRandom:NextNumber(config.MinRX, config.MaxRX)) else curRX
+		local ry = if config.EnableRY ~= false then math.rad(mRandom:NextNumber(config.MinRY, config.MaxRY)) else curRY
+		local rz = if config.EnableRZ ~= false then math.rad(mRandom:NextNumber(config.MinRZ, config.MaxRZ)) else curRZ
 		return CFrame.new(pos) * CFrame.Angles(rx, ry, rz)
 
 	elseif typeName == "EnumItem" and enumType then
@@ -336,14 +367,14 @@ local function applyRandomization(instances: { Instance }, panels: { PanelConfig
 	end
 	for _, inst in instances do
 		for _, panel in panels do
-			local value = generateRandomValue(panel.Config, panel.TypeName, nil)
+			local ok, currentVal = pcall(function()
+				return (inst :: any)[panel.PropertyName]
+			end)
+			local value = generateRandomValue(panel.Config, panel.TypeName, nil, if ok then currentVal else nil)
 			-- Resolve EnumType from the actual instance value for EnumItem panels
 			if panel.TypeName == "EnumItem" then
-				local ok, currentVal = pcall(function()
-					return (inst :: any)[panel.PropertyName]
-				end)
 				if ok and typeof(currentVal) == "EnumItem" then
-					value = generateRandomValue(panel.Config, panel.TypeName, currentVal.EnumType)
+					value = generateRandomValue(panel.Config, panel.TypeName, currentVal.EnumType, currentVal)
 				end
 			end
 			if value ~= nil then
@@ -416,66 +447,107 @@ local function MinMaxHeader(props: {
 	})
 end
 
+local kCheckboxSize = 16
+
 local function MinMaxRow(props: {
 	Label: string,
 	Min: number,
 	Max: number,
+	Enabled: boolean?,
 	OnMinChanged: (number) -> number?,
 	OnMaxChanged: (number) -> number?,
+	OnEqualClicked: () -> (),
+	OnEnabledChanged: ((boolean) -> ())?,
 	LayoutOrder: number?,
 })
+	local enabled = props.Enabled ~= false
+	local dimmed = not enabled
+
+	local children: { [string]: any } = {}
+	children.ListLayout = e("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal,
+		VerticalAlignment = Enum.VerticalAlignment.Center,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, 4),
+	})
+
+	if props.OnEnabledChanged then
+		children.EnableCheck = e("TextButton", {
+			Size = UDim2.fromOffset(kCheckboxSize, kCheckboxSize),
+			BackgroundColor3 = if enabled then Colors.ACTION_BLUE else Colors.GREY,
+			AutoButtonColor = true,
+			Text = if enabled then "\u{2713}" else "",
+			TextColor3 = Colors.WHITE,
+			Font = Enum.Font.SourceSansBold,
+			TextSize = 12,
+			BorderSizePixel = 0,
+			LayoutOrder = 0,
+			[React.Event.MouseButton1Click] = function()
+				(props.OnEnabledChanged :: any)(not enabled)
+			end,
+		}, {
+			Corner = e("UICorner", { CornerRadius = UDim.new(0, 3) }),
+		})
+	end
+
+	children.Label = e("TextLabel", {
+		Size = UDim2.fromOffset(kLabelWidth, 24),
+		BackgroundTransparency = 1,
+		Text = props.Label,
+		TextColor3 = if dimmed then Colors.GREY else Colors.OFFWHITE,
+		Font = Enum.Font.SourceSansBold,
+		TextSize = 14,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		LayoutOrder = 1,
+	})
+	children.MinInput = e(NumberInput, {
+		Value = props.Min,
+		ValueEntered = props.OnMinChanged,
+		Grow = true,
+		LayoutOrder = 2,
+	})
+	children.EqualButton = e("TextButton", {
+		Size = UDim2.fromOffset(kDashWidth, 24),
+		BackgroundTransparency = 1,
+		Text = "=",
+		TextColor3 = if dimmed then Colors.GREY else Colors.OFFWHITE,
+		Font = Enum.Font.SourceSansBold,
+		TextSize = 16,
+		LayoutOrder = 3,
+		[React.Event.MouseButton1Click] = props.OnEqualClicked,
+	})
+	children.MaxInput = e(NumberInput, {
+		Value = props.Max,
+		ValueEntered = props.OnMaxChanged,
+		Grow = true,
+		LayoutOrder = 4,
+	})
+
 	return e("Frame", {
 		Size = UDim2.new(1, 0, 0, 24),
 		BackgroundTransparency = 1,
 		LayoutOrder = props.LayoutOrder,
-	}, {
-		ListLayout = e("UIListLayout", {
-			FillDirection = Enum.FillDirection.Horizontal,
-			VerticalAlignment = Enum.VerticalAlignment.Center,
-			SortOrder = Enum.SortOrder.LayoutOrder,
-			Padding = UDim.new(0, 4),
-		}),
-		Label = e("TextLabel", {
-			Size = UDim2.fromOffset(kLabelWidth, 24),
-			BackgroundTransparency = 1,
-			Text = props.Label,
-			TextColor3 = Colors.OFFWHITE,
-			Font = Enum.Font.SourceSansBold,
-			TextSize = 14,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			LayoutOrder = 1,
-		}),
-		MinInput = e(NumberInput, {
-			Value = props.Min,
-			ValueEntered = props.OnMinChanged,
-			Grow = true,
-			LayoutOrder = 2,
-		}),
-		Dash = e("TextLabel", {
-			Size = UDim2.fromOffset(kDashWidth, 24),
-			BackgroundTransparency = 1,
-			Text = "\u{2013}",
-			TextColor3 = Colors.OFFWHITE,
-			Font = Enum.Font.SourceSansBold,
-			TextSize = 16,
-			LayoutOrder = 3,
-		}),
-		MaxInput = e(NumberInput, {
-			Value = props.Max,
-			ValueEntered = props.OnMaxChanged,
-			Grow = true,
-			LayoutOrder = 4,
-		}),
-	})
+	}, children)
 end
 
 --------------------------------------------------------------------------------
 -- Type-specific Editors
 --------------------------------------------------------------------------------
 
+local function collapseRange(
+	config: { [string]: any },
+	minKey: string,
+	maxKey: string,
+	onBatchChanged: ({ [string]: any }) -> ()
+)
+	local avg = (config[minKey] + config[maxKey]) / 2
+	onBatchChanged({ [minKey] = avg, [maxKey] = avg })
+end
+
 local function NumberEditor(props: {
 	Config: { [string]: any },
 	OnConfigChanged: (key: string, value: any) -> (),
+	OnBatchChanged: ({ [string]: any }) -> (),
 	LayoutOrder: number?,
 })
 	return e("Frame", {
@@ -508,14 +580,17 @@ local function NumberEditor(props: {
 			Grow = true,
 			LayoutOrder = 2,
 		}),
-		Dash = e("TextLabel", {
+		EqualButton = e("TextButton", {
 			Size = UDim2.fromOffset(kDashWidth, 24),
 			BackgroundTransparency = 1,
-			Text = "\u{2013}",
+			Text = "=",
 			TextColor3 = Colors.OFFWHITE,
 			Font = Enum.Font.SourceSansBold,
 			TextSize = 16,
 			LayoutOrder = 3,
+			[React.Event.MouseButton1Click] = function()
+				collapseRange(props.Config, "Min", "Max", props.OnBatchChanged)
+			end,
 		}),
 		MaxLabel = e("TextLabel", {
 			Size = UDim2.fromOffset(26, 24),
@@ -559,6 +634,7 @@ end
 local function Color3Editor(props: {
 	Config: { [string]: any },
 	OnConfigChanged: (key: string, value: any) -> (),
+	OnBatchChanged: ({ [string]: any }) -> (),
 	LayoutOrder: number?,
 })
 	local config = props.Config
@@ -603,39 +679,57 @@ local function Color3Editor(props: {
 	if isHSV then
 		children.H = e(MinMaxRow, {
 			Label = "H", Min = config.MinH, Max = config.MaxH,
+			Enabled = config.EnableH ~= false,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinH", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxH", v); return v end,
+			OnEqualClicked = function() collapseRange(config, "MinH", "MaxH", props.OnBatchChanged) end,
+			OnEnabledChanged = function(v: boolean) props.OnConfigChanged("EnableH", v) end,
 			LayoutOrder = 3,
 		})
 		children.S = e(MinMaxRow, {
 			Label = "S", Min = config.MinS, Max = config.MaxS,
+			Enabled = config.EnableS ~= false,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinS", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxS", v); return v end,
+			OnEqualClicked = function() collapseRange(config, "MinS", "MaxS", props.OnBatchChanged) end,
+			OnEnabledChanged = function(v: boolean) props.OnConfigChanged("EnableS", v) end,
 			LayoutOrder = 4,
 		})
 		children.V = e(MinMaxRow, {
 			Label = "V", Min = config.MinV, Max = config.MaxV,
+			Enabled = config.EnableV ~= false,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinV", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxV", v); return v end,
+			OnEqualClicked = function() collapseRange(config, "MinV", "MaxV", props.OnBatchChanged) end,
+			OnEnabledChanged = function(v: boolean) props.OnConfigChanged("EnableV", v) end,
 			LayoutOrder = 5,
 		})
 	else
 		children.R = e(MinMaxRow, {
 			Label = "R", Min = config.MinR, Max = config.MaxR,
+			Enabled = config.EnableR ~= false,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinR", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxR", v); return v end,
+			OnEqualClicked = function() collapseRange(config, "MinR", "MaxR", props.OnBatchChanged) end,
+			OnEnabledChanged = function(v: boolean) props.OnConfigChanged("EnableR", v) end,
 			LayoutOrder = 3,
 		})
 		children.G = e(MinMaxRow, {
 			Label = "G", Min = config.MinG, Max = config.MaxG,
+			Enabled = config.EnableG ~= false,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinG", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxG", v); return v end,
+			OnEqualClicked = function() collapseRange(config, "MinG", "MaxG", props.OnBatchChanged) end,
+			OnEnabledChanged = function(v: boolean) props.OnConfigChanged("EnableG", v) end,
 			LayoutOrder = 4,
 		})
 		children.B = e(MinMaxRow, {
 			Label = "B", Min = config.MinB, Max = config.MaxB,
+			Enabled = config.EnableB ~= false,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinB", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxB", v); return v end,
+			OnEqualClicked = function() collapseRange(config, "MinB", "MaxB", props.OnBatchChanged) end,
+			OnEnabledChanged = function(v: boolean) props.OnConfigChanged("EnableB", v) end,
 			LayoutOrder = 5,
 		})
 	end
@@ -651,6 +745,7 @@ end
 local function Vector3Editor(props: {
 	Config: { [string]: any },
 	OnConfigChanged: (key: string, value: any) -> (),
+	OnBatchChanged: ({ [string]: any }) -> (),
 	LayoutOrder: number?,
 })
 	local config = props.Config
@@ -667,20 +762,29 @@ local function Vector3Editor(props: {
 		Header = e(MinMaxHeader, { LayoutOrder = 1 }),
 		X = e(MinMaxRow, {
 			Label = "X", Min = config.MinX, Max = config.MaxX,
+			Enabled = config.EnableX ~= false,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinX", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxX", v); return v end,
+			OnEqualClicked = function() collapseRange(config, "MinX", "MaxX", props.OnBatchChanged) end,
+			OnEnabledChanged = function(v: boolean) props.OnConfigChanged("EnableX", v) end,
 			LayoutOrder = 2,
 		}),
 		Y = e(MinMaxRow, {
 			Label = "Y", Min = config.MinY, Max = config.MaxY,
+			Enabled = config.EnableY ~= false,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinY", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxY", v); return v end,
+			OnEqualClicked = function() collapseRange(config, "MinY", "MaxY", props.OnBatchChanged) end,
+			OnEnabledChanged = function(v: boolean) props.OnConfigChanged("EnableY", v) end,
 			LayoutOrder = 3,
 		}),
 		Z = e(MinMaxRow, {
 			Label = "Z", Min = config.MinZ, Max = config.MaxZ,
+			Enabled = config.EnableZ ~= false,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinZ", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxZ", v); return v end,
+			OnEqualClicked = function() collapseRange(config, "MinZ", "MaxZ", props.OnBatchChanged) end,
+			OnEnabledChanged = function(v: boolean) props.OnConfigChanged("EnableZ", v) end,
 			LayoutOrder = 4,
 		}),
 	})
@@ -689,6 +793,7 @@ end
 local function Vector2Editor(props: {
 	Config: { [string]: any },
 	OnConfigChanged: (key: string, value: any) -> (),
+	OnBatchChanged: ({ [string]: any }) -> (),
 	LayoutOrder: number?,
 })
 	local config = props.Config
@@ -705,14 +810,20 @@ local function Vector2Editor(props: {
 		Header = e(MinMaxHeader, { LayoutOrder = 1 }),
 		X = e(MinMaxRow, {
 			Label = "X", Min = config.MinX, Max = config.MaxX,
+			Enabled = config.EnableX ~= false,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinX", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxX", v); return v end,
+			OnEqualClicked = function() collapseRange(config, "MinX", "MaxX", props.OnBatchChanged) end,
+			OnEnabledChanged = function(v: boolean) props.OnConfigChanged("EnableX", v) end,
 			LayoutOrder = 2,
 		}),
 		Y = e(MinMaxRow, {
 			Label = "Y", Min = config.MinY, Max = config.MaxY,
+			Enabled = config.EnableY ~= false,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinY", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxY", v); return v end,
+			OnEqualClicked = function() collapseRange(config, "MinY", "MaxY", props.OnBatchChanged) end,
+			OnEnabledChanged = function(v: boolean) props.OnConfigChanged("EnableY", v) end,
 			LayoutOrder = 3,
 		}),
 	})
@@ -721,6 +832,7 @@ end
 local function UDimEditor(props: {
 	Config: { [string]: any },
 	OnConfigChanged: (key: string, value: any) -> (),
+	OnBatchChanged: ({ [string]: any }) -> (),
 	LayoutOrder: number?,
 })
 	local config = props.Config
@@ -737,14 +849,20 @@ local function UDimEditor(props: {
 		Header = e(MinMaxHeader, { LayoutOrder = 1 }),
 		Scale = e(MinMaxRow, {
 			Label = "Scl", Min = config.MinScale, Max = config.MaxScale,
+			Enabled = config.EnableScale ~= false,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinScale", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxScale", v); return v end,
+			OnEqualClicked = function() collapseRange(config, "MinScale", "MaxScale", props.OnBatchChanged) end,
+			OnEnabledChanged = function(v: boolean) props.OnConfigChanged("EnableScale", v) end,
 			LayoutOrder = 2,
 		}),
 		Offset = e(MinMaxRow, {
 			Label = "Off", Min = config.MinOffset, Max = config.MaxOffset,
+			Enabled = config.EnableOffset ~= false,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinOffset", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxOffset", v); return v end,
+			OnEqualClicked = function() collapseRange(config, "MinOffset", "MaxOffset", props.OnBatchChanged) end,
+			OnEnabledChanged = function(v: boolean) props.OnConfigChanged("EnableOffset", v) end,
 			LayoutOrder = 3,
 		}),
 	})
@@ -753,6 +871,7 @@ end
 local function UDim2Editor(props: {
 	Config: { [string]: any },
 	OnConfigChanged: (key: string, value: any) -> (),
+	OnBatchChanged: ({ [string]: any }) -> (),
 	LayoutOrder: number?,
 })
 	local config = props.Config
@@ -779,14 +898,20 @@ local function UDim2Editor(props: {
 		XHeader = e(MinMaxHeader, { LayoutOrder = 2 }),
 		XScale = e(MinMaxRow, {
 			Label = "Scl", Min = config.MinXScale, Max = config.MaxXScale,
+			Enabled = config.EnableXScale ~= false,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinXScale", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxXScale", v); return v end,
+			OnEqualClicked = function() collapseRange(config, "MinXScale", "MaxXScale", props.OnBatchChanged) end,
+			OnEnabledChanged = function(v: boolean) props.OnConfigChanged("EnableXScale", v) end,
 			LayoutOrder = 3,
 		}),
 		XOffset = e(MinMaxRow, {
 			Label = "Off", Min = config.MinXOffset, Max = config.MaxXOffset,
+			Enabled = config.EnableXOffset ~= false,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinXOffset", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxXOffset", v); return v end,
+			OnEqualClicked = function() collapseRange(config, "MinXOffset", "MaxXOffset", props.OnBatchChanged) end,
+			OnEnabledChanged = function(v: boolean) props.OnConfigChanged("EnableXOffset", v) end,
 			LayoutOrder = 4,
 		}),
 		YLabel = e("TextLabel", {
@@ -802,14 +927,20 @@ local function UDim2Editor(props: {
 		YHeader = e(MinMaxHeader, { LayoutOrder = 6 }),
 		YScale = e(MinMaxRow, {
 			Label = "Scl", Min = config.MinYScale, Max = config.MaxYScale,
+			Enabled = config.EnableYScale ~= false,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinYScale", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxYScale", v); return v end,
+			OnEqualClicked = function() collapseRange(config, "MinYScale", "MaxYScale", props.OnBatchChanged) end,
+			OnEnabledChanged = function(v: boolean) props.OnConfigChanged("EnableYScale", v) end,
 			LayoutOrder = 7,
 		}),
 		YOffset = e(MinMaxRow, {
 			Label = "Off", Min = config.MinYOffset, Max = config.MaxYOffset,
+			Enabled = config.EnableYOffset ~= false,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinYOffset", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxYOffset", v); return v end,
+			OnEqualClicked = function() collapseRange(config, "MinYOffset", "MaxYOffset", props.OnBatchChanged) end,
+			OnEnabledChanged = function(v: boolean) props.OnConfigChanged("EnableYOffset", v) end,
 			LayoutOrder = 8,
 		}),
 	})
@@ -818,6 +949,8 @@ end
 local function CFrameEditor(props: {
 	Config: { [string]: any },
 	OnConfigChanged: (key: string, value: any) -> (),
+	OnBatchChanged: ({ [string]: any }) -> (),
+	OnResetToSelection: () -> (),
 	LayoutOrder: number?,
 })
 	local config = props.Config
@@ -830,6 +963,20 @@ local function CFrameEditor(props: {
 		ListLayout = e("UIListLayout", {
 			SortOrder = Enum.SortOrder.LayoutOrder,
 			Padding = UDim.new(0, 2),
+		}),
+		ResetButton = e("TextButton", {
+			Size = UDim2.new(1, 0, 0, 22),
+			BackgroundColor3 = Colors.GREY,
+			AutoButtonColor = true,
+			Text = "Set from Selection",
+			TextColor3 = Colors.WHITE,
+			Font = Enum.Font.SourceSans,
+			TextSize = 14,
+			BorderSizePixel = 0,
+			LayoutOrder = 0,
+			[React.Event.MouseButton1Click] = props.OnResetToSelection,
+		}, {
+			Corner = e("UICorner", { CornerRadius = UDim.new(0, 3) }),
 		}),
 		PosLabel = e("TextLabel", {
 			Size = UDim2.new(1, 0, 0, 18),
@@ -844,20 +991,29 @@ local function CFrameEditor(props: {
 		PosHeader = e(MinMaxHeader, { LayoutOrder = 2 }),
 		PX = e(MinMaxRow, {
 			Label = "X", Min = config.MinPX, Max = config.MaxPX,
+			Enabled = config.EnablePX ~= false,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinPX", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxPX", v); return v end,
+			OnEqualClicked = function() collapseRange(config, "MinPX", "MaxPX", props.OnBatchChanged) end,
+			OnEnabledChanged = function(v: boolean) props.OnConfigChanged("EnablePX", v) end,
 			LayoutOrder = 3,
 		}),
 		PY = e(MinMaxRow, {
 			Label = "Y", Min = config.MinPY, Max = config.MaxPY,
+			Enabled = config.EnablePY ~= false,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinPY", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxPY", v); return v end,
+			OnEqualClicked = function() collapseRange(config, "MinPY", "MaxPY", props.OnBatchChanged) end,
+			OnEnabledChanged = function(v: boolean) props.OnConfigChanged("EnablePY", v) end,
 			LayoutOrder = 4,
 		}),
 		PZ = e(MinMaxRow, {
 			Label = "Z", Min = config.MinPZ, Max = config.MaxPZ,
+			Enabled = config.EnablePZ ~= false,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinPZ", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxPZ", v); return v end,
+			OnEqualClicked = function() collapseRange(config, "MinPZ", "MaxPZ", props.OnBatchChanged) end,
+			OnEnabledChanged = function(v: boolean) props.OnConfigChanged("EnablePZ", v) end,
 			LayoutOrder = 5,
 		}),
 		RotLabel = e("TextLabel", {
@@ -873,20 +1029,29 @@ local function CFrameEditor(props: {
 		RotHeader = e(MinMaxHeader, { LayoutOrder = 7 }),
 		RX = e(MinMaxRow, {
 			Label = "X", Min = config.MinRX, Max = config.MaxRX,
+			Enabled = config.EnableRX ~= false,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinRX", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxRX", v); return v end,
+			OnEqualClicked = function() collapseRange(config, "MinRX", "MaxRX", props.OnBatchChanged) end,
+			OnEnabledChanged = function(v: boolean) props.OnConfigChanged("EnableRX", v) end,
 			LayoutOrder = 8,
 		}),
 		RY = e(MinMaxRow, {
 			Label = "Y", Min = config.MinRY, Max = config.MaxRY,
+			Enabled = config.EnableRY ~= false,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinRY", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxRY", v); return v end,
+			OnEqualClicked = function() collapseRange(config, "MinRY", "MaxRY", props.OnBatchChanged) end,
+			OnEnabledChanged = function(v: boolean) props.OnConfigChanged("EnableRY", v) end,
 			LayoutOrder = 9,
 		}),
 		RZ = e(MinMaxRow, {
 			Label = "Z", Min = config.MinRZ, Max = config.MaxRZ,
+			Enabled = config.EnableRZ ~= false,
 			OnMinChanged = function(v: number) props.OnConfigChanged("MinRZ", v); return v end,
 			OnMaxChanged = function(v: number) props.OnConfigChanged("MaxRZ", v); return v end,
+			OnEqualClicked = function() collapseRange(config, "MinRZ", "MaxRZ", props.OnBatchChanged) end,
+			OnEnabledChanged = function(v: boolean) props.OnConfigChanged("EnableRZ", v) end,
 			LayoutOrder = 10,
 		}),
 	})
@@ -1019,24 +1184,26 @@ local function renderEditor(
 	typeName: string,
 	enumType: Enum?,
 	onConfigChanged: (key: string, value: any) -> (),
+	onBatchChanged: ({ [string]: any }) -> (),
+	onResetToSelection: () -> (),
 	layoutOrder: number?
 ): any
 	if typeName == "number" then
-		return e(NumberEditor, { Config = config, OnConfigChanged = onConfigChanged, LayoutOrder = layoutOrder })
+		return e(NumberEditor, { Config = config, OnConfigChanged = onConfigChanged, OnBatchChanged = onBatchChanged, LayoutOrder = layoutOrder })
 	elseif typeName == "boolean" then
 		return e(BooleanEditor, { Config = config, OnConfigChanged = onConfigChanged, LayoutOrder = layoutOrder })
 	elseif typeName == "Color3" then
-		return e(Color3Editor, { Config = config, OnConfigChanged = onConfigChanged, LayoutOrder = layoutOrder })
+		return e(Color3Editor, { Config = config, OnConfigChanged = onConfigChanged, OnBatchChanged = onBatchChanged, LayoutOrder = layoutOrder })
 	elseif typeName == "Vector3" then
-		return e(Vector3Editor, { Config = config, OnConfigChanged = onConfigChanged, LayoutOrder = layoutOrder })
+		return e(Vector3Editor, { Config = config, OnConfigChanged = onConfigChanged, OnBatchChanged = onBatchChanged, LayoutOrder = layoutOrder })
 	elseif typeName == "Vector2" then
-		return e(Vector2Editor, { Config = config, OnConfigChanged = onConfigChanged, LayoutOrder = layoutOrder })
+		return e(Vector2Editor, { Config = config, OnConfigChanged = onConfigChanged, OnBatchChanged = onBatchChanged, LayoutOrder = layoutOrder })
 	elseif typeName == "UDim" then
-		return e(UDimEditor, { Config = config, OnConfigChanged = onConfigChanged, LayoutOrder = layoutOrder })
+		return e(UDimEditor, { Config = config, OnConfigChanged = onConfigChanged, OnBatchChanged = onBatchChanged, LayoutOrder = layoutOrder })
 	elseif typeName == "UDim2" then
-		return e(UDim2Editor, { Config = config, OnConfigChanged = onConfigChanged, LayoutOrder = layoutOrder })
+		return e(UDim2Editor, { Config = config, OnConfigChanged = onConfigChanged, OnBatchChanged = onBatchChanged, LayoutOrder = layoutOrder })
 	elseif typeName == "CFrame" then
-		return e(CFrameEditor, { Config = config, OnConfigChanged = onConfigChanged, LayoutOrder = layoutOrder })
+		return e(CFrameEditor, { Config = config, OnConfigChanged = onConfigChanged, OnBatchChanged = onBatchChanged, OnResetToSelection = onResetToSelection, LayoutOrder = layoutOrder })
 	elseif typeName == "EnumItem" and enumType then
 		return e(EnumItemEditor, { Config = config, EnumType = enumType, OnConfigChanged = onConfigChanged, LayoutOrder = layoutOrder })
 	else
@@ -1122,10 +1289,17 @@ end
 local function PropertyPanel(props: {
 	Panel: PanelConfig,
 	EnumType: Enum?,
+	Applicable: boolean,
 	OnRemove: () -> (),
+	OnRandomize: () -> (),
 	OnConfigChanged: (key: string, value: any) -> (),
+	OnBatchChanged: ({ [string]: any }) -> (),
+	OnResetToSelection: () -> (),
 	LayoutOrder: number?,
 })
+	if not props.Applicable then
+		return nil
+	end
 	return e("Frame", {
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
@@ -1141,8 +1315,30 @@ local function PropertyPanel(props: {
 				props.Panel.TypeName,
 				props.EnumType,
 				props.OnConfigChanged,
+				props.OnBatchChanged,
+				props.OnResetToSelection,
 				1
 			),
+			RandomizeSpacer = e("Frame", {
+				Size = UDim2.new(1, 0, 0, 2),
+				BackgroundTransparency = 1,
+				LayoutOrder = 99,
+			}),
+			RandomizeButton = e("TextButton", {
+				Size = UDim2.new(0, 0, 0, 28),
+				AutomaticSize = Enum.AutomaticSize.X,
+				BackgroundColor3 = Colors.ACTION_BLUE,
+				AutoButtonColor = true,
+				Text = "  Randomize " .. props.Panel.PropertyName .. "  ",
+				TextColor3 = Colors.WHITE,
+				Font = Enum.Font.SourceSansBold,
+				TextSize = 14,
+				BorderSizePixel = 0,
+				LayoutOrder = 100,
+				[React.Event.MouseButton1Click] = props.OnRandomize,
+			}, {
+				Corner = e("UICorner", { CornerRadius = UDim.new(0, 4) }),
+			}),
 		}),
 		RemoveButton = e("TextButton", {
 			Size = UDim2.fromOffset(20, 20),
@@ -1247,11 +1443,11 @@ local function PropertySearchPanel(props: {
 					FlexMode = Enum.UIFlexMode.Grow,
 				}),
 			}),
-			CloseButton = e("TextButton", {
-				Size = UDim2.fromOffset(26, 26),
-				BackgroundColor3 = Colors.GREY,
+			CancelButton = e("TextButton", {
+				Size = UDim2.fromOffset(52, 26),
+				BackgroundColor3 = Colors.DARK_RED,
 				AutoButtonColor = true,
-				Text = "X",
+				Text = "Cancel",
 				TextColor3 = Colors.WHITE,
 				Font = Enum.Font.SourceSansBold,
 				TextSize = 14,
@@ -1356,16 +1552,22 @@ local function RandomizePropertiesSettings(props: ToolSettingsProps)
 		updatePanels(newPanels)
 	end
 
-	local function updatePanelConfig(index: number, key: string, value: any)
+	local function updatePanelConfigBatch(index: number, changes: { [string]: any })
 		local newPanels = table.clone(panels)
 		local newConfig = table.clone(newPanels[index].Config)
-		newConfig[key] = value
+		for key, value in changes do
+			newConfig[key] = value
+		end
 		newPanels[index] = {
 			PropertyName = newPanels[index].PropertyName,
 			TypeName = newPanels[index].TypeName,
 			Config = newConfig,
 		}
 		updatePanels(newPanels)
+	end
+
+	local function updatePanelConfig(index: number, key: string, value: any)
+		updatePanelConfigBatch(index, { [key] = value })
 	end
 
 	-- Build children
@@ -1388,37 +1590,38 @@ local function RandomizePropertiesSettings(props: ToolSettingsProps)
 			LayoutOrder = 1,
 		})
 	else
-		-- Add Property button
-		children.AddButton = e("TextButton", {
-			Size = UDim2.new(1, 0, 0, 28),
-			BackgroundColor3 = Colors.ACTION_BLUE,
-			AutoButtonColor = true,
-			Text = "+ Add Property",
-			TextColor3 = Colors.WHITE,
-			Font = Enum.Font.SourceSansBold,
-			TextSize = 16,
-			BorderSizePixel = 0,
-			LayoutOrder = 1,
-			[React.Event.MouseButton1Click] = function()
-				setSearchOpen(not searchOpen)
-			end,
-		}, {
-			Corner = e("UICorner", {
-				CornerRadius = UDim.new(0, 4),
-			}),
-		})
-
-		-- Search panel
 		if searchOpen then
+			-- Search panel replaces the Add button
 			children.SearchPanel = e(PropertySearchPanel, {
 				AvailableProperties = availableProperties,
 				OnAddProperty = function(info: PropertyInfo)
 					addProperty(info)
+					setSearchOpen(false)
 				end,
 				OnClose = function()
 					setSearchOpen(false)
 				end,
-				LayoutOrder = 2,
+				LayoutOrder = 1,
+			})
+		else
+			-- Add Property button
+			children.AddButton = e("TextButton", {
+				Size = UDim2.new(1, 0, 0, 28),
+				BackgroundColor3 = Colors.ACTION_BLUE,
+				AutoButtonColor = true,
+				Text = "+ Add Property",
+				TextColor3 = Colors.WHITE,
+				Font = Enum.Font.SourceSansBold,
+				TextSize = 16,
+				BorderSizePixel = 0,
+				LayoutOrder = 1,
+				[React.Event.MouseButton1Click] = function()
+					setSearchOpen(true)
+				end,
+			}, {
+				Corner = e("UICorner", {
+					CornerRadius = UDim.new(0, 4),
+				}),
 			})
 		end
 	end
@@ -1434,14 +1637,29 @@ local function RandomizePropertiesSettings(props: ToolSettingsProps)
 			end
 		end
 
+		local applicable = propertyInfoByName[panel.PropertyName] ~= nil or #selection == 0
+
 		children["Panel_" .. panel.PropertyName] = e(PropertyPanel, {
 			Panel = panel,
 			EnumType = enumType,
+			Applicable = applicable,
 			OnRemove = function()
 				removePanel(i)
 			end,
+			OnRandomize = function()
+				applyRandomization(selection, { panel })
+			end,
 			OnConfigChanged = function(key: string, value: any)
 				updatePanelConfig(i, key, value)
+			end,
+			OnBatchChanged = function(changes: { [string]: any })
+				updatePanelConfigBatch(i, changes)
+			end,
+			OnResetToSelection = function()
+				local info = propertyInfoByName[panel.PropertyName]
+				if info then
+					updatePanelConfigBatch(i, createDefaultConfig(info, selection))
+				end
 			end,
 			LayoutOrder = 10 + i,
 		})
@@ -1450,8 +1668,8 @@ local function RandomizePropertiesSettings(props: ToolSettingsProps)
 	-- Randomize button (only when there are panels)
 	if #panels > 0 then
 		children.RandomizeButton = e(OperationButton, {
-			Text = "Randomize",
-			Height = 36,
+			Text = "Randomize All",
+			Height = 30,
 			Disabled = #selection == 0,
 			Color = Colors.ACTION_BLUE,
 			OnClick = function()
