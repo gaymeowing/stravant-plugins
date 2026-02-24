@@ -398,40 +398,116 @@ local function doSweep(
 end
 
 --------------------------------------------------------------------------------
+-- Face highlight (matching ResizeAlign's BoxHandleAdornment + edge cylinders)
+--------------------------------------------------------------------------------
+
+-- Given a face normal direction, return the two perpendicular tangent axes
+local function otherNormals(dir: Vector3): (Vector3, Vector3)
+	if math.abs(dir.X) > 0.5 then
+		return Vector3.yAxis, Vector3.zAxis
+	elseif math.abs(dir.Y) > 0.5 then
+		return Vector3.xAxis, Vector3.zAxis
+	else
+		return Vector3.xAxis, Vector3.yAxis
+	end
+end
+
+type FaceHighlightGroup = {
+	box: BoxHandleAdornment,
+	edges: { CylinderHandleAdornment },
+}
+
+local function createFaceHighlight(
+	part: BasePart,
+	normalId: Enum.NormalId,
+	color: Color3,
+	transparency: number,
+	zIndexOffset: number
+): FaceHighlightGroup
+	local hsize = part.Size / 2
+	local faceDir = Vector3.fromNormalId(normalId)
+	local faceA, faceB = otherNormals(faceDir)
+
+	-- Box covering the face
+	local box = Instance.new("BoxHandleAdornment")
+	box.Adornee = workspace.Terrain
+	box.Size = faceA * hsize * 2 + faceB * hsize * 2 + faceDir * 0.1
+	box.CFrame = part.CFrame * CFrame.new(faceDir * hsize)
+	box.ZIndex = 1 + zIndexOffset
+	box.AlwaysOnTop = true
+	box.Transparency = transparency
+	box.Color3 = color
+	box.Parent = workspace.Terrain
+
+	-- Edge CFrame bases
+	local baseA = CFrame.fromMatrix(Vector3.new(), faceA:Cross(faceB).Unit, faceA)
+	local baseB = CFrame.fromMatrix(Vector3.new(), faceB:Cross(faceA).Unit, faceB)
+	local lenAlongB = (faceB * hsize * 2).Magnitude + 0.4
+	local lenAlongA = (faceA * hsize * 2).Magnitude + 0.4
+
+	local edges: { CylinderHandleAdornment } = {}
+	local edgeDefs = {
+		{ cf = baseA, sro = faceDir + faceA, height = lenAlongB },
+		{ cf = baseA, sro = faceDir - faceA, height = lenAlongB },
+		{ cf = baseB, sro = faceDir + faceB, height = lenAlongA },
+		{ cf = baseB, sro = faceDir - faceB, height = lenAlongA },
+	}
+	for _, def in edgeDefs do
+		local cyl = Instance.new("CylinderHandleAdornment")
+		cyl.Color3 = color
+		cyl.ZIndex = 2 + zIndexOffset
+		cyl.Adornee = part
+		cyl.Height = def.height
+		cyl.AlwaysOnTop = false
+		cyl.Radius = 0.05
+		cyl.CFrame = def.cf
+		cyl.SizeRelativeOffset = def.sro
+		cyl.Parent = workspace.Terrain
+		table.insert(edges, cyl)
+	end
+
+	return { box = box, edges = edges }
+end
+
+local function destroyFaceHighlight(group: FaceHighlightGroup?)
+	if not group then
+		return
+	end
+	group.box:Destroy()
+	for _, edge in group.edges do
+		edge:Destroy()
+	end
+end
+
+--------------------------------------------------------------------------------
 -- State
 --------------------------------------------------------------------------------
+
+local kColorRed = Color3.new(1, 0, 0)
+local kColorBlue = Color3.new(0, 0, 1)
 
 local mState: "idle" | "faceB" = "idle"
 local mPartA: BasePart? = nil
 local mNormalIdA: Enum.NormalId? = nil
-local mArrowA: ConeHandleAdornment? = nil
+local mSelectedHighlight: FaceHighlightGroup? = nil
+local mHoverHighlight: FaceHighlightGroup? = nil
+local mHoverPart: BasePart? = nil
+local mHoverNormalId: Enum.NormalId? = nil
+
+local function clearHover()
+	destroyFaceHighlight(mHoverHighlight)
+	mHoverHighlight = nil
+	mHoverPart = nil
+	mHoverNormalId = nil
+end
 
 local function clearState()
 	mState = "idle"
 	mPartA = nil
 	mNormalIdA = nil
-	if mArrowA then
-		mArrowA:Destroy()
-		mArrowA = nil
-	end
-end
-
-local function createArrow(part: BasePart, normalId: Enum.NormalId): ConeHandleAdornment
-	local arrow = Instance.new("ConeHandleAdornment")
-	arrow.Adornee = workspace.Terrain
-	arrow.Color3 = Color3.fromRGB(0, 162, 255)
-	arrow.AlwaysOnTop = true
-	arrow.Height = 1.5
-	arrow.Radius = 0.4
-
-	local normal = NORMAL_ID_VECTORS[normalId]
-	local faceOffset = sizeAlongNormal(part.Size, normalId) / 2
-	local worldNormal = part.CFrame:VectorToWorldSpace(normal)
-	local worldPos = part.Position + worldNormal * faceOffset
-
-	arrow.CFrame = CFrame.lookAt(worldPos, worldPos + worldNormal)
-	arrow.Parent = workspace.Terrain
-	return arrow
+	destroyFaceHighlight(mSelectedHighlight)
+	mSelectedHighlight = nil
+	clearHover()
 end
 
 --------------------------------------------------------------------------------
@@ -496,27 +572,33 @@ local Sweep: ToolTypes.ToolDefinition = {
 		ctx.UpdateUI()
 	end,
 
-	OnDeactivated = function(ctx: ToolContext)
+	OnDeactivated = function(_ctx: ToolContext)
 		clearState()
-		ctx.SetHighlight(nil)
 	end,
 
 	OnViewChanged = function(ctx: ToolContext)
-		if mState == "idle" then
-			if isBlockPart(ctx.Target) then
-				ctx.SetHighlight(ctx.Target)
-			else
-				ctx.SetHighlight(nil)
-			end
-		elseif mState == "faceB" then
-			if isBlockPart(ctx.Target) and ctx.Target ~= mPartA then
-				ctx.SetHighlight(ctx.Target)
-			elseif ctx.Target == mPartA then
-				ctx.SetHighlight(mPartA)
-			else
-				ctx.SetHighlight(nil)
-			end
+		local target = ctx.Target
+		local targetNormal = ctx.TargetNormal
+
+		if not isBlockPart(target) or not targetNormal then
+			clearHover()
+			return
 		end
+
+		local part = target :: BasePart
+		local normalId = worldNormalToNormalId(part, targetNormal)
+
+		-- Skip if hover hasn't changed
+		if part == mHoverPart and normalId == mHoverNormalId then
+			return
+		end
+
+		clearHover()
+		mHoverPart = part
+		mHoverNormalId = normalId
+
+		local hoverColor = if mState == "idle" then kColorRed else kColorBlue
+		mHoverHighlight = createFaceHighlight(part, normalId, hoverColor, 0.5, 2)
 	end,
 
 	OnClicked = function(ctx: ToolContext)
@@ -531,8 +613,10 @@ local Sweep: ToolTypes.ToolDefinition = {
 			mState = "faceB"
 			mPartA = ctx.Target
 			mNormalIdA = normalId
-			mArrowA = createArrow(ctx.Target, normalId)
-			ctx.SetHighlight(ctx.Target)
+			destroyFaceHighlight(mSelectedHighlight)
+			mSelectedHighlight = createFaceHighlight(ctx.Target, normalId, kColorRed, 0, 0)
+			-- Recreate hover in blue color now that we're in faceB state
+			clearHover()
 			ctx.UpdateUI()
 
 		elseif mState == "faceB" then
@@ -543,14 +627,13 @@ local Sweep: ToolTypes.ToolDefinition = {
 				return
 			end
 
-			-- Clicking the same part restarts with the new face
+			-- Clicking the same part reselects face A
 			if ctx.Target == mPartA then
 				local normalId = worldNormalToNormalId(ctx.Target, ctx.TargetNormal)
-				if mArrowA then
-					mArrowA:Destroy()
-				end
 				mNormalIdA = normalId
-				mArrowA = createArrow(ctx.Target, normalId)
+				destroyFaceHighlight(mSelectedHighlight)
+				mSelectedHighlight = createFaceHighlight(ctx.Target, normalId, kColorRed, 0, 0)
+				clearHover()
 				ctx.UpdateUI()
 				return
 			end
@@ -570,7 +653,6 @@ local Sweep: ToolTypes.ToolDefinition = {
 			end
 
 			clearState()
-			ctx.SetHighlight(nil)
 			ctx.UpdateUI()
 		end
 	end,
