@@ -302,26 +302,25 @@ local function doSweep(
 		depthB_radial = math.abs(tanB1:Dot(partB.Size))
 	end
 
-	-- Find the hinge point (pivot) using ray-ray closest approach
-	-- Ray A: centerA + t * nA, Ray B: centerB + s * nB
-	local a_coeff = nA:Dot(nA)
-	local b_coeff = nA:Dot(nB)
-	local c_coeff = nB:Dot(nB)
-	local sep = centerA - centerB
-	local d_coeff = nA:Dot(sep)
-	local e_coeff = nB:Dot(sep)
+	-- Find the hinge point as the intersection of the two face planes.
+	-- Plane A: p · nA = centerA · nA, Plane B: p · nB = centerB · nB
+	-- Their intersection line is the geometric edge where the faces would meet.
+	local cosNormals = nA:Dot(nB)
+	local planeDA = centerA:Dot(nA)
+	local planeDB = centerB:Dot(nB)
+	local planeDenom = 1 - cosNormals * cosNormals
 
-	local denom = a_coeff * c_coeff - b_coeff * b_coeff
 	local hingePoint: Vector3
-	if math.abs(denom) < 0.001 then
-		-- Parallel case: place hinge at midpoint perpendicular to both
+	if math.abs(planeDenom) < 0.001 then
+		-- Parallel case (shouldn't reach here due to earlier check)
 		hingePoint = (centerA + centerB) / 2
 	else
-		local tA = (b_coeff * e_coeff - c_coeff * d_coeff) / denom
-		local tB = (a_coeff * e_coeff - b_coeff * d_coeff) / denom
-		local closestA = centerA + nA * tA
-		local closestB = centerB + nB * tB
-		hingePoint = (closestA + closestB) / 2
+		local alpha = (planeDA - cosNormals * planeDB) / planeDenom
+		local beta = (planeDB - cosNormals * planeDA) / planeDenom
+		local p0 = nA * alpha + nB * beta
+		-- Project along hinge axis to be closest to the midpoint of face centers
+		local mid = (centerA + centerB) / 2
+		hingePoint = p0 + hingeAxis * (mid - p0):Dot(hingeAxis)
 	end
 
 	-- Compute radial directions from hinge to face centers
