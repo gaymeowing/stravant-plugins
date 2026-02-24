@@ -1,8 +1,11 @@
 --!strict
+local UserInputService = game:GetService("UserInputService")
+
 local Plugin = script.Parent.Parent.Parent
 local Packages = Plugin.Packages
 local React = require(Packages.React)
 
+local Checkbox = require("../PluginGui/Checkbox")
 local Colors = require("../PluginGui/Colors")
 local NumberInput = require("../PluginGui/NumberInput")
 local ToolTypes = require("../ToolTypes")
@@ -29,18 +32,156 @@ local NORMAL_ID_VECTORS: { [Enum.NormalId]: Vector3 } = {
 -- Helpers
 --------------------------------------------------------------------------------
 
-local function worldNormalToNormalId(part: BasePart, worldNormal: Vector3): Enum.NormalId
-	local objectNormal = part.CFrame:VectorToObjectSpace(worldNormal)
-	local bestDot = -math.huge
-	local bestId: Enum.NormalId = Enum.NormalId.Front
-	for normalId, axis in NORMAL_ID_VECTORS do
-		local dot = objectNormal:Dot(axis)
-		if dot > bestDot then
-			bestDot = dot
-			bestId = normalId
+-- Position-based face detection (more accurate than normal-based for oblique views)
+local function detectFaceFromPosition(part: BasePart, hitPosition: Vector3): Enum.NormalId
+	local localDisp = part.CFrame:VectorToObjectSpace(hitPosition - part.Position)
+	local halfSize = part.Size / 2
+	local smallest = math.huge
+	local bestFace = Enum.NormalId.Top
+	if math.abs(localDisp.X - halfSize.X) < smallest then
+		bestFace = Enum.NormalId.Right
+		smallest = math.abs(localDisp.X - halfSize.X)
+	end
+	if math.abs(localDisp.X + halfSize.X) < smallest then
+		bestFace = Enum.NormalId.Left
+		smallest = math.abs(localDisp.X + halfSize.X)
+	end
+	if math.abs(localDisp.Y - halfSize.Y) < smallest then
+		bestFace = Enum.NormalId.Top
+		smallest = math.abs(localDisp.Y - halfSize.Y)
+	end
+	if math.abs(localDisp.Y + halfSize.Y) < smallest then
+		bestFace = Enum.NormalId.Bottom
+		smallest = math.abs(localDisp.Y + halfSize.Y)
+	end
+	if math.abs(localDisp.Z - halfSize.Z) < smallest then
+		bestFace = Enum.NormalId.Back
+		smallest = math.abs(localDisp.Z - halfSize.Z)
+	end
+	if math.abs(localDisp.Z + halfSize.Z) < smallest then
+		bestFace = Enum.NormalId.Front
+		smallest = math.abs(localDisp.Z + halfSize.Z)
+	end
+	return bestFace
+end
+
+--------------------------------------------------------------------------------
+-- Edge threshold face selection (ported from ResizeAlign)
+--------------------------------------------------------------------------------
+
+local EDGE_THRESHOLD = 0.25
+
+local function otherNormalIds(normalId: Enum.NormalId): (Enum.NormalId, Enum.NormalId, Enum.NormalId, Enum.NormalId)
+	if normalId == Enum.NormalId.Top or normalId == Enum.NormalId.Bottom then
+		return Enum.NormalId.Right, Enum.NormalId.Left, Enum.NormalId.Back, Enum.NormalId.Front
+	elseif normalId == Enum.NormalId.Right or normalId == Enum.NormalId.Left then
+		return Enum.NormalId.Top, Enum.NormalId.Bottom, Enum.NormalId.Back, Enum.NormalId.Front
+	else
+		return Enum.NormalId.Top, Enum.NormalId.Bottom, Enum.NormalId.Right, Enum.NormalId.Left
+	end
+end
+
+local function getFaceSize(part: BasePart, normalId: Enum.NormalId): number
+	local size = part.Size
+	local vec = Vector3.fromNormalId(normalId)
+	local x = (1 - math.abs(vec.X)) * size.X
+	local y = (1 - math.abs(vec.Y)) * size.Y
+	local z = (1 - math.abs(vec.Z)) * size.Z
+	return (if x == 0 then 1 else x) * (if y == 0 then 1 else y) * (if z == 0 then 1 else z)
+end
+
+type ScreenEdge = {
+	a: Vector2, b: Vector2,
+	c: Vector2, d: Vector2,
+	n: Enum.NormalId,
+}
+
+local function intersectRayRay2D(r1o: Vector2, r1d: Vector2, r2o: Vector2, r2d: Vector2): (boolean, number)
+	local n =
+		(r2o - r1o):Dot(r1d) * r2d:Dot(r2d) +
+		(r1o - r2o):Dot(r2d) * r1d:Dot(r2d)
+	local d =
+		r1d:Dot(r1d) * r2d:Dot(r2d) -
+		r1d:Dot(r2d) * r1d:Dot(r2d)
+	if d == 0 then
+		return false, 0
+	else
+		return true, n / d
+	end
+end
+
+local function directionAndDistanceToEdge(edge: ScreenEdge, point: Vector2): (Vector2, number)
+	local alongEdge = (edge.b - edge.a).Unit
+	local toPoint = point - edge.a
+	local pointOnEdge = edge.a + alongEdge * toPoint:Dot(alongEdge)
+	local toEdge = pointOnEdge - point
+	return toEdge.Unit, toEdge.Magnitude
+end
+
+local function distanceToOppositeEdge(edge: ScreenEdge, point: Vector2, direction: Vector2): number?
+	local alongEdge = edge.d - edge.c
+	local alongEdgeDir = alongEdge.Unit
+	local intersect, t = intersectRayRay2D(edge.c, alongEdgeDir, point, direction)
+	if intersect then
+		local intersectPoint = edge.c + alongEdgeDir * t
+		local firstTry = (intersectPoint - point).Magnitude
+		local clampC = (point - edge.c).Magnitude
+		local clampD = (point - edge.d).Magnitude
+		return math.min(firstTry, clampC, clampD)
+	else
+		return nil
+	end
+end
+
+local function getTargetFace(part: BasePart, hitPosition: Vector3): Enum.NormalId
+	local normalId = detectFaceFromPosition(part, hitPosition)
+
+	-- Edge threshold refinement: snap to smaller adjacent face when near an edge
+	local camera = workspace.CurrentCamera
+	if not camera then
+		return normalId
+	end
+
+	local halfSize = 0.5 * part.Size
+	local cf = part.CFrame
+	local basePosition = cf:PointToWorldSpace(Vector3.fromNormalId(normalId) * halfSize)
+	local x, negx, y, negy = otherNormalIds(normalId)
+	local offset_x = cf:VectorToWorldSpace(Vector3.fromNormalId(x) * halfSize)
+	local offset_y = cf:VectorToWorldSpace(Vector3.fromNormalId(y) * halfSize)
+
+	local function toScreen(worldPos: Vector3): Vector2
+		local screenPos = camera:WorldToScreenPoint(worldPos)
+		return Vector2.new(screenPos.X, screenPos.Y)
+	end
+
+	local screenEdges: { ScreenEdge } = {
+		{ a = toScreen(basePosition + offset_x + offset_y), b = toScreen(basePosition + offset_x - offset_y), c = toScreen(basePosition - offset_x + offset_y), d = toScreen(basePosition - offset_x - offset_y), n = x },
+		{ a = toScreen(basePosition - offset_x + offset_y), b = toScreen(basePosition - offset_x - offset_y), c = toScreen(basePosition + offset_x + offset_y), d = toScreen(basePosition + offset_x - offset_y), n = negx },
+		{ a = toScreen(basePosition + offset_y + offset_x), b = toScreen(basePosition + offset_y - offset_x), c = toScreen(basePosition - offset_y + offset_x), d = toScreen(basePosition - offset_y - offset_x), n = y },
+		{ a = toScreen(basePosition - offset_y + offset_x), b = toScreen(basePosition - offset_y - offset_x), c = toScreen(basePosition + offset_y + offset_x), d = toScreen(basePosition + offset_y - offset_x), n = negy },
+	}
+
+	local mouseLocation = UserInputService:GetMouseLocation()
+	local smallestFrac = 1
+	local smallestFracEdge: ScreenEdge? = nil
+	local hardCutoff = camera.ViewportSize.Magnitude * 0.2
+
+	for _, edge in screenEdges do
+		local dir, distToEdge = directionAndDistanceToEdge(edge, mouseLocation)
+		local distToOtherEdge = distanceToOppositeEdge(edge, mouseLocation, -dir)
+		if distToOtherEdge then
+			local totalDist = distToOtherEdge + distToEdge
+			local frac = distToEdge / totalDist
+			if frac < smallestFrac and frac < EDGE_THRESHOLD and getFaceSize(part, edge.n) < getFaceSize(part, normalId) then
+				if distToEdge < hardCutoff then
+					smallestFrac = frac
+					smallestFracEdge = edge
+				end
+			end
 		end
 	end
-	return bestId
+
+	return if smallestFracEdge then smallestFracEdge.n else normalId
 end
 
 local function sizeAlongNormal(size: Vector3, normalId: Enum.NormalId): number
@@ -185,7 +326,8 @@ end
 local function doSweep(
 	partA: BasePart, normalIdA: Enum.NormalId,
 	partB: BasePart, normalIdB: Enum.NormalId,
-	segmentCount: number
+	segmentCount: number,
+	avoidZFighting: boolean
 )
 	-- Compute face geometry for A
 	local axisA = NORMAL_ID_VECTORS[normalIdA]
@@ -302,98 +444,140 @@ local function doSweep(
 		depthB_radial = math.abs(tanB1:Dot(partB.Size))
 	end
 
-	-- Find the hinge point as the intersection of the two face planes.
-	-- Plane A: p · nA = centerA · nA, Plane B: p · nB = centerB · nB
-	-- Their intersection line is the geometric edge where the faces would meet.
-	local cosNormals = nA:Dot(nB)
-	local planeDA = centerA:Dot(nA)
-	local planeDB = centerB:Dot(nB)
-	local planeDenom = 1 - cosNormals * cosNormals
+	-- Compute Bezier control point distances via ray-ray closest approach.
+	-- Ray A: centerA + s*nA, Ray B: centerB + t*nB
+	local sep = centerA - centerB
+	local b_coeff = nA:Dot(nB)
+	local d_coeff = nA:Dot(sep)
+	local e_coeff = nB:Dot(sep)
+	local rayDenom = 1 - b_coeff * b_coeff
 
-	local hingePoint: Vector3
-	if math.abs(planeDenom) < 0.001 then
-		-- Parallel case (shouldn't reach here due to earlier check)
-		hingePoint = (centerA + centerB) / 2
+	local sParam: number
+	local tParam: number
+	if math.abs(rayDenom) < 0.001 then
+		-- Parallel: use half the distance between centers
+		local halfDist = (centerB - centerA).Magnitude / 2
+		sParam = halfDist
+		tParam = halfDist
 	else
-		local alpha = (planeDA - cosNormals * planeDB) / planeDenom
-		local beta = (planeDB - cosNormals * planeDA) / planeDenom
-		local p0 = nA * alpha + nB * beta
-		-- Project along hinge axis to be closest to the midpoint of face centers
-		local mid = (centerA + centerB) / 2
-		hingePoint = p0 + hingeAxis * (mid - p0):Dot(hingeAxis)
+		sParam = (b_coeff * e_coeff - d_coeff) / rayDenom
+		tParam = (e_coeff - b_coeff * d_coeff) / rayDenom
 	end
 
-	-- Compute radial directions from hinge to face centers
+	-- Scale control distances for circular arc approximation.
+	-- Compute the hinge point (arc center) and radii from the closest approach,
+	-- then use d = r * (4/3) * tan(arcAngle/4) for the Bezier circle formula.
+	local closestOnA = centerA + nA * sParam
+	local closestOnB = centerB + nB * tParam
+	local hingePoint = (closestOnA + closestOnB) / 2
+
 	local toA = centerA - hingePoint
-	local toA_axial = hingeAxis * toA:Dot(hingeAxis)
-	local radialA = toA - toA_axial
-	local radiusA = radialA.Magnitude
+	local radialA = toA - hingeAxis * toA:Dot(hingeAxis)
+	local rA = radialA.Magnitude
 
 	local toB = centerB - hingePoint
-	local toB_axial = hingeAxis * toB:Dot(hingeAxis)
-	local radialB = toB - toB_axial
-	local radiusB = radialB.Magnitude
+	local radialB = toB - hingeAxis * toB:Dot(hingeAxis)
+	local rB = radialB.Magnitude
 
-	-- Use average radius for the arc center
-	local radius = (radiusA + radiusB) / 2
-	if radius < 0.001 then
-		return -- Faces are coincident with hinge, can't sweep
+	if rA > 0.001 and rB > 0.001 then
+		local arcAngle = math.acos(math.clamp(radialA.Unit:Dot(radialB.Unit), -1, 1))
+		if arcAngle > 0.001 then
+			local factor = (4 / 3) * math.tan(arcAngle / 4)
+			sParam = math.sign(sParam) * rA * factor
+			tParam = math.sign(tParam) * rB * factor
+		end
 	end
 
-	-- Normalize radial directions
-	local radialDirA = if radiusA > 0.001 then radialA.Unit else nA
-	local radialDirB = if radiusB > 0.001 then radialB.Unit else nB
+	-- Cubic Bezier control points: curve starts at face A center, ends at face B center,
+	-- with control points extending along each face's outward normal.
+	local P0 = centerA
+	local P1 = centerA + nA * sParam
+	local P2 = centerB + nB * tParam
+	local P3 = centerB
 
-	-- Compute sweep angle from actual radial directions with correct sign
-	local cosAngle = math.clamp(radialDirA:Dot(radialDirB), -1, 1)
-	local sinAngle = hingeAxis:Dot(radialDirA:Cross(radialDirB))
-	local sweepAngle = math.atan2(sinAngle, cosAngle)
-	if sweepAngle < 0 then
-		hingeAxis = -hingeAxis
-		sweepAngle = -sweepAngle
-	end
-	if sweepAngle < 0.001 then
-		return -- Faces are coincident, nothing to sweep
+	-- Bezier evaluation: B(f) = (1-f)^3*P0 + 3*(1-f)^2*f*P1 + 3*(1-f)*f^2*P2 + f^3*P3
+	local function bezierPoint(f: number): Vector3
+		local u = 1 - f
+		return u * u * u * P0 + 3 * u * u * f * P1 + 3 * u * f * f * P2 + f * f * f * P3
 	end
 
-	-- Inner and outer radii based on face radial depths
-	local innerR = radius - depthA_radial / 2
-	local outerR = radius + depthA_radial / 2
-	if innerR < 0 then
-		innerR = 0
+	-- Bezier derivative: B'(f) = 3*(1-f)^2*(P1-P0) + 6*(1-f)*f*(P2-P1) + 3*f^2*(P3-P2)
+	local function bezierTangent(f: number): Vector3
+		local u = 1 - f
+		return 3 * u * u * (P1 - P0) + 6 * u * f * (P2 - P1) + 3 * f * f * (P3 - P2)
 	end
 
-	-- Create model for sweep geometry
+	-- Generate geometry along the Bezier curve
 	local model = Instance.new("Model")
 	model.Name = "Sweep"
 
-	-- Generate arc segments
-	for i = 0, segmentCount - 1 do
-		local frac0 = i / segmentCount
-		local frac1 = (i + 1) / segmentCount
-		local angle0 = frac0 * sweepAngle
-		local angle1 = frac1 * sweepAngle
+	if avoidZFighting then
+		-- Wedge mode: sample at N+1 points, fill trapezoids with triangles
+		type SweepSample = { inner: Vector3, outer: Vector3 }
+		local samples: { SweepSample } = {}
 
-		-- Compute radial direction at each angle by rotating radialDirA around hingeAxis
-		local rot0 = CFrame.fromAxisAngle(hingeAxis, angle0)
-		local rot1 = CFrame.fromAxisAngle(hingeAxis, angle1)
-		local dir0 = rot0:VectorToWorldSpace(radialDirA)
-		local dir1 = rot1:VectorToWorldSpace(radialDirA)
+		for i = 0, segmentCount do
+			local frac = i / segmentCount
+			local point = bezierPoint(frac)
+			local tangent = bezierTangent(frac)
+			if tangent.Magnitude < 0.001 then
+				tangent = (P3 - P0)
+			end
+			tangent = tangent.Unit
 
-		-- Four corner points of the trapezoidal cross-section
-		local inner0 = hingePoint + dir0 * innerR
-		local outer0 = hingePoint + dir0 * outerR
-		local inner1 = hingePoint + dir1 * innerR
-		local outer1 = hingePoint + dir1 * outerR
+			local radialDir = hingeAxis:Cross(tangent)
+			if radialDir.Magnitude < 0.001 then
+				if math.abs(tangent:Dot(Vector3.yAxis)) < 0.99 then
+					radialDir = tangent:Cross(Vector3.yAxis).Unit
+				else
+					radialDir = tangent:Cross(Vector3.xAxis).Unit
+				end
+			else
+				radialDir = radialDir.Unit
+			end
 
-		-- Extrude direction is along the hinge axis
-		local extrudeDir = hingeAxis
+			local depth = depthA_radial + (depthB_radial - depthA_radial) * frac
+			local centered = point + hingeAxis * axialWidth / 2
 
-		-- Split trapezoid into 2 triangles and fill each
-		-- Triangle 1: inner0, outer0, inner1
-		fillTriangle(inner0, outer0, inner1, axialWidth, extrudeDir, partA, model)
-		-- Triangle 2: outer0, outer1, inner1
-		fillTriangle(outer0, outer1, inner1, axialWidth, extrudeDir, partA, model)
+			table.insert(samples, {
+				inner = centered - radialDir * depth / 2,
+				outer = centered + radialDir * depth / 2,
+			})
+		end
+
+		for i = 1, segmentCount do
+			local s0 = samples[i]
+			local s1 = samples[i + 1]
+			fillTriangle(s0.inner, s0.outer, s1.inner, axialWidth, hingeAxis, partA, model)
+			fillTriangle(s0.outer, s1.outer, s1.inner, axialWidth, hingeAxis, partA, model)
+		end
+	else
+		-- Box mode: one block per segment, oriented along the Bezier tangent
+		for i = 0, segmentCount - 1 do
+			local frac0 = i / segmentCount
+			local frac1 = (i + 1) / segmentCount
+			local fracMid = (frac0 + frac1) / 2
+
+			local p0 = bezierPoint(frac0)
+			local p1 = bezierPoint(frac1)
+			local midPoint = (p0 + p1) / 2
+			local chordLength = (p1 - p0).Magnitude
+
+			local tangent = bezierTangent(fracMid)
+			if tangent.Magnitude < 0.001 then
+				tangent = (P3 - P0)
+			end
+			tangent = tangent.Unit
+
+			local depth = depthA_radial + (depthB_radial - depthA_radial) * fracMid
+
+			local block = Instance.new("Part")
+			block.Shape = Enum.PartType.Block
+			applyProperties(block, partA)
+			block.Size = Vector3.new(depth, axialWidth, chordLength)
+			block.CFrame = CFrame.lookAt(midPoint, midPoint + tangent, hingeAxis)
+			block.Parent = model
+		end
 	end
 
 	model.Parent = partA.Parent
@@ -518,6 +702,7 @@ end
 
 local function SweepSettings(props: ToolSettingsProps)
 	local segmentCount = props.GetSetting("SegmentCount") :: number
+	local avoidZFighting = props.GetSetting("AvoidZFighting") :: boolean
 
 	local stateText = if mState == "idle"
 		then "Click first face"
@@ -553,6 +738,14 @@ local function SweepSettings(props: ToolSettingsProps)
 			end,
 			LayoutOrder = 2,
 		}),
+		AvoidZFightingCheckbox = e(Checkbox, {
+			Label = "Avoid Z-Fighting",
+			Checked = avoidZFighting,
+			Changed = function(newValue: boolean)
+				props.SetSetting("AvoidZFighting", newValue)
+			end,
+			LayoutOrder = 3,
+		}),
 	})
 end
 
@@ -567,6 +760,7 @@ local Sweep: ToolTypes.ToolDefinition = {
 
 	DefaultSettings = {
 		SegmentCount = 6,
+		AvoidZFighting = true,
 	},
 
 	OnActivated = function(ctx: ToolContext)
@@ -580,15 +774,20 @@ local Sweep: ToolTypes.ToolDefinition = {
 
 	OnViewChanged = function(ctx: ToolContext)
 		local target = ctx.Target
-		local targetNormal = ctx.TargetNormal
+		local targetPosition = ctx.TargetPosition
 
-		if not isBlockPart(target) or not targetNormal then
+		if not isBlockPart(target) or not targetPosition then
 			clearHover()
 			return
 		end
 
 		local part = target :: BasePart
-		local normalId = worldNormalToNormalId(part, targetNormal)
+		if part.Locked then
+			clearHover()
+			return
+		end
+
+		local normalId = getTargetFace(part, targetPosition)
 
 		-- Skip if hover hasn't changed
 		if part == mHoverPart and normalId == mHoverNormalId then
@@ -605,50 +804,46 @@ local Sweep: ToolTypes.ToolDefinition = {
 
 	OnClicked = function(ctx: ToolContext)
 		if mState == "idle" then
-			if not ctx.Target or not ctx.TargetNormal then
+			if not isBlockPart(ctx.Target) or not ctx.TargetPosition then
 				return
 			end
-			if not isBlockPart(ctx.Target) then
+			local part = ctx.Target :: BasePart
+			if part.Locked then
 				return
 			end
-			local normalId = worldNormalToNormalId(ctx.Target, ctx.TargetNormal)
+			local normalId = getTargetFace(part, ctx.TargetPosition)
 			mState = "faceB"
-			mPartA = ctx.Target
+			mPartA = part
 			mNormalIdA = normalId
 			destroyFaceHighlight(mSelectedHighlight)
-			mSelectedHighlight = createFaceHighlight(ctx.Target, normalId, kColorRed, 0, 0)
+			mSelectedHighlight = createFaceHighlight(part, normalId, kColorRed, 0, 0)
 			-- Recreate hover in blue color now that we're in faceB state
 			clearHover()
 			ctx.UpdateUI()
 
 		elseif mState == "faceB" then
-			if not ctx.Target or not ctx.TargetNormal then
+			-- Cancel if clicking nothing, non-block, locked, or same part
+			if not isBlockPart(ctx.Target) or not ctx.TargetPosition then
+				clearState()
+				ctx.UpdateUI()
 				return
 			end
-			if not isBlockPart(ctx.Target) then
-				return
-			end
-
-			-- Clicking the same part reselects face A
-			if ctx.Target == mPartA then
-				local normalId = worldNormalToNormalId(ctx.Target, ctx.TargetNormal)
-				mNormalIdA = normalId
-				destroyFaceHighlight(mSelectedHighlight)
-				mSelectedHighlight = createFaceHighlight(ctx.Target, normalId, kColorRed, 0, 0)
-				clearHover()
+			local part = ctx.Target :: BasePart
+			if part.Locked or part == mPartA then
+				clearState()
 				ctx.UpdateUI()
 				return
 			end
 
 			local partA = mPartA :: BasePart
 			local normalIdA = mNormalIdA :: Enum.NormalId
-			local partB = ctx.Target
-			local normalIdB = worldNormalToNormalId(partB, ctx.TargetNormal)
+			local normalIdB = getTargetFace(part, ctx.TargetPosition)
 			local segmentCount = ctx.GetSetting("SegmentCount") :: number
+			local avoidZFighting = ctx.GetSetting("AvoidZFighting") :: boolean
 
 			local id = ctx.BeginRecording("Sweep")
 
-			doSweep(partA, normalIdA, partB, normalIdB, segmentCount)
+			doSweep(partA, normalIdA, part, normalIdB, segmentCount, avoidZFighting)
 
 			if id then
 				ctx.FinishRecording(id)
