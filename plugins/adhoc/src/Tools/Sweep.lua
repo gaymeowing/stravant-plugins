@@ -9,6 +9,7 @@ local Checkbox = require("../PluginGui/Checkbox")
 local Colors = require("../PluginGui/Colors")
 local NumberInput = require("../PluginGui/NumberInput")
 local ToolTypes = require("../ToolTypes")
+local copyPartProps = require("../copyPartProps")
 
 type ToolContext = ToolTypes.ToolContext
 type ToolSettingsProps = ToolTypes.ToolSettingsProps
@@ -199,23 +200,6 @@ local function isBlockPart(part: BasePart?): boolean
 	return false
 end
 
--- Copy visual/physical properties, set all surfaces smooth
-local function applyProperties(target: BasePart, source: BasePart)
-	target.Color = source.Color
-	target.Material = source.Material
-	target.MaterialVariant = source.MaterialVariant
-	target.Transparency = source.Transparency
-	target.Reflectance = source.Reflectance
-	target.Anchored = source.Anchored
-	target.CanCollide = source.CanCollide
-	target.CastShadow = source.CastShadow
-	target.TopSurface = Enum.SurfaceType.Smooth
-	target.BottomSurface = Enum.SurfaceType.Smooth
-	target.FrontSurface = Enum.SurfaceType.Smooth
-	target.BackSurface = Enum.SurfaceType.Smooth
-	target.LeftSurface = Enum.SurfaceType.Smooth
-	target.RightSurface = Enum.SurfaceType.Smooth
-end
 
 -- Get the two tangent axes for a face (axes perpendicular to the normal)
 local function getFaceTangents(normalId: Enum.NormalId): (Vector3, Vector3)
@@ -304,7 +288,7 @@ local function fillTriangle(
 	if len1 > 0.001 then
 		local part1 = Instance.new("Part")
 		part1.Shape = Enum.PartType.Wedge
-		applyProperties(part1, source)
+		copyPartProps(source, part1)
 		part1.Size = Vector3.new(thickness, width, len1)
 		part1.CFrame = maincf * CFrame.Angles(math.pi, 0, math.pi / 2) * CFrame.new(flip * (-thickness / 2), width / 2, len1 / 2)
 		part1.Parent = parent
@@ -312,7 +296,7 @@ local function fillTriangle(
 	if len2 > 0.001 then
 		local part2 = Instance.new("Part")
 		part2.Shape = Enum.PartType.Wedge
-		applyProperties(part2, source)
+		copyPartProps(source, part2)
 		part2.Size = Vector3.new(thickness, width, len2)
 		part2.CFrame = maincf * CFrame.Angles(math.pi, math.pi, -math.pi / 2) * CFrame.new(flip * (thickness / 2), width / 2, -len1 - len2 / 2)
 		part2.Parent = parent
@@ -462,7 +446,7 @@ local function doSweep(
 
 			local block = Instance.new("Part")
 			block.Shape = Enum.PartType.Block
-			applyProperties(block, partA)
+			copyPartProps(partA, block)
 			block.Size = Vector3.new(bridgeWidth, bridgeHeight, dist)
 			block.CFrame = CFrame.lookAt(midpoint, midpoint + bridgeDir, upDir)
 			block.Parent = model
@@ -650,7 +634,7 @@ local function doSweep(
 
 			local block = Instance.new("Part")
 			block.Shape = Enum.PartType.Block
-			applyProperties(block, partA)
+			copyPartProps(partA, block)
 			block.Size = Vector3.new(depth, axialWidth, chordLength)
 			block.CFrame = CFrame.lookAt(midPoint, midPoint + chordDir, hingeAxis)
 			block.Parent = model
