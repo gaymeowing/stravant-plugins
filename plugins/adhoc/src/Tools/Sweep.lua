@@ -846,7 +846,7 @@ end
 local Sweep: ToolTypes.ToolDefinition = {
 	Id = "sweep",
 	Name = "Sweep Arc",
-	Description = "Create an arc of geometry between two faces",
+	Description = "Create an arc of geometry between two faces. Disable \"Avoid Z-Fighting\" to use fewer basic Block parts to fill the space at the cost of some Z-fighting.",
 
 	DefaultSettings = {
 		SegmentCount = 6,
