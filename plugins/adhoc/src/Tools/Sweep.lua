@@ -208,18 +208,16 @@ local function doSweep(
 	local tanB1_world = partB.CFrame:VectorToWorldSpace(tanB1)
 	local tanB2_world = partB.CFrame:VectorToWorldSpace(tanB2)
 
-	-- Determine hinge axis and sweep angle
+	-- Determine hinge axis
 	local crossVec = nA:Cross(nB)
 	local crossMag = crossVec.Magnitude
-	local dot = nA:Dot(-nB)
 
 	-- Determine the hinge axis (the axis we rotate around)
 	local hingeAxis: Vector3
-	local sweepAngle: number
 
 	if crossMag < 0.001 then
 		-- Normals are parallel
-		if dot > 0.5 then
+		if nA:Dot(-nB) > 0.5 then
 			-- Facing each other (nA ≈ -nB): straight bridge, no arc
 			local model = Instance.new("Model")
 			model.Name = "Sweep"
@@ -233,7 +231,6 @@ local function doSweep(
 			local widthA1 = math.abs(tanA1:Dot(partA.Size))
 			local widthA2 = math.abs(tanA2:Dot(partA.Size))
 
-			-- Use the smaller face dimension for the bridge cross-section
 			-- Pick hinge axis as the one most aligned with the face tangents
 			local upDir = tanA1_world
 			local bridgeWidth = widthA1
@@ -267,11 +264,9 @@ local function doSweep(
 				end
 			end
 			hingeAxis = nA:Cross(dispPerp.Unit).Unit
-			sweepAngle = math.pi
 		end
 	else
 		hingeAxis = crossVec.Unit
-		sweepAngle = math.acos(math.clamp(dot, -1, 1))
 	end
 
 	-- Find face width along the hinge axis for A and B
@@ -350,13 +345,21 @@ local function doSweep(
 	local radialDirA = if radiusA > 0.001 then radialA.Unit else nA
 	local radialDirB = if radiusB > 0.001 then radialB.Unit else nB
 
-	-- Project hinge point onto the axis between the two face centers for symmetry
-	local hingeCenter = hingePoint + toA_axial * 0 -- keep at computed position
+	-- Compute sweep angle from actual radial directions with correct sign
+	local cosAngle = math.clamp(radialDirA:Dot(radialDirB), -1, 1)
+	local sinAngle = hingeAxis:Dot(radialDirA:Cross(radialDirB))
+	local sweepAngle = math.atan2(sinAngle, cosAngle)
+	if sweepAngle < 0 then
+		hingeAxis = -hingeAxis
+		sweepAngle = -sweepAngle
+	end
+	if sweepAngle < 0.001 then
+		return -- Faces are coincident, nothing to sweep
+	end
 
 	-- Inner and outer radii based on face radial depths
 	local innerR = radius - depthA_radial / 2
 	local outerR = radius + depthA_radial / 2
-	-- Ensure inner radius is not negative
 	if innerR < 0 then
 		innerR = 0
 	end
@@ -379,10 +382,10 @@ local function doSweep(
 		local dir1 = rot1:VectorToWorldSpace(radialDirA)
 
 		-- Four corner points of the trapezoidal cross-section
-		local inner0 = hingeCenter + dir0 * innerR
-		local outer0 = hingeCenter + dir0 * outerR
-		local inner1 = hingeCenter + dir1 * innerR
-		local outer1 = hingeCenter + dir1 * outerR
+		local inner0 = hingePoint + dir0 * innerR
+		local outer0 = hingePoint + dir0 * outerR
+		local inner1 = hingePoint + dir1 * innerR
+		local outer1 = hingePoint + dir1 * outerR
 
 		-- Extrude direction is along the hinge axis
 		local extrudeDir = hingeAxis
