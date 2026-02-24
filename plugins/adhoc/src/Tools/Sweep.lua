@@ -320,6 +320,83 @@ local function fillTriangle(
 end
 
 --------------------------------------------------------------------------------
+-- OuterTouch resize (ported from ResizeAlign)
+--------------------------------------------------------------------------------
+
+local function resizePartAlongFace(part: BasePart, normalId: Enum.NormalId, amount: number)
+	local localDir = NORMAL_ID_VECTORS[normalId]
+	local absDir = Vector3.new(math.abs(localDir.X), math.abs(localDir.Y), math.abs(localDir.Z))
+	part.Size = part.Size + absDir * amount
+	part.CFrame = part.CFrame * CFrame.new(localDir * amount / 2)
+end
+
+local function extendBlocksToTouch(
+	blockA: BasePart, faceA: Enum.NormalId,
+	blockB: BasePart, faceB: Enum.NormalId
+)
+	local function faceCorners(part: BasePart, normalId: Enum.NormalId): { Vector3 }
+		local hsize = part.Size / 2
+		local cf = part.CFrame
+		local fDir = Vector3.fromNormalId(normalId) * hsize
+		local t1, t2 = getFaceTangents(normalId)
+		t1, t2 = t1 * hsize, t2 * hsize
+		return {
+			cf:PointToWorldSpace(fDir + t1 + t2),
+			cf:PointToWorldSpace(fDir + t1 - t2),
+			cf:PointToWorldSpace(fDir - t1 - t2),
+			cf:PointToWorldSpace(fDir - t1 + t2),
+		}
+	end
+
+	local cornersA = faceCorners(blockA, faceA)
+	local cornersB = faceCorners(blockB, faceB)
+	local dirA = blockA.CFrame:VectorToWorldSpace(Vector3.fromNormalId(faceA))
+	local dirB = blockB.CFrame:VectorToWorldSpace(Vector3.fromNormalId(faceB))
+
+	-- Find the corner of A most outward relative to B's face plane
+	local basePtB = blockB.CFrame:PointToWorldSpace(Vector3.fromNormalId(faceB) * blockB.Size / 2)
+	local maxDistA = -math.huge
+	local extendPtA = cornersA[1]
+	for _, pt in cornersA do
+		local dist = (pt - basePtB):Dot(dirB)
+		if dist > maxDistA then
+			maxDistA = dist
+			extendPtA = pt
+		end
+	end
+
+	-- Find the corner of B most outward relative to A's face plane
+	local basePtA = blockA.CFrame:PointToWorldSpace(Vector3.fromNormalId(faceA) * blockA.Size / 2)
+	local maxDistB = -math.huge
+	local extendPtB = cornersB[1]
+	for _, pt in cornersB do
+		local dist = (pt - basePtA):Dot(dirA)
+		if dist > maxDistB then
+			maxDistB = dist
+			extendPtB = pt
+		end
+	end
+
+	-- Ray-ray closest approach for extend amounts
+	local a_val = dirA:Dot(dirA)
+	local b_val = dirA:Dot(dirB)
+	local c_val = dirB:Dot(dirB)
+	local denom = a_val * c_val - b_val * b_val
+	if math.abs(denom) < 0.001 then
+		return
+	end
+
+	local startSep = extendPtB - extendPtA
+	local d_val = dirA:Dot(startSep)
+	local e_val = dirB:Dot(startSep)
+	local lenA = -(b_val * e_val - c_val * d_val) / denom
+	local lenB = -(a_val * e_val - b_val * d_val) / denom
+
+	resizePartAlongFace(blockA, faceA, lenA)
+	resizePartAlongFace(blockB, faceB, lenB)
+end
+
+--------------------------------------------------------------------------------
 -- Core sweep algorithm
 --------------------------------------------------------------------------------
 
@@ -552,7 +629,8 @@ local function doSweep(
 			fillTriangle(s0.outer, s1.outer, s1.inner, axialWidth, hingeAxis, partA, model)
 		end
 	else
-		-- Box mode: one block per segment, oriented along the Bezier tangent
+		-- Box mode: place blocks along Bezier, then extend adjacent pairs to touch
+		local blocks: { BasePart } = {}
 		for i = 0, segmentCount - 1 do
 			local frac0 = i / segmentCount
 			local frac1 = (i + 1) / segmentCount
@@ -561,22 +639,34 @@ local function doSweep(
 			local p0 = bezierPoint(frac0)
 			local p1 = bezierPoint(frac1)
 			local midPoint = (p0 + p1) / 2
-			local chordLength = (p1 - p0).Magnitude
 
-			local tangent = bezierTangent(fracMid)
-			if tangent.Magnitude < 0.001 then
-				tangent = (P3 - P0)
+			local chord = p1 - p0
+			if chord.Magnitude < 0.001 then
+				continue
 			end
-			tangent = tangent.Unit
-
+			local chordDir = chord.Unit
+			local chordLength = chord.Magnitude
 			local depth = depthA_radial + (depthB_radial - depthA_radial) * fracMid
 
 			local block = Instance.new("Part")
 			block.Shape = Enum.PartType.Block
 			applyProperties(block, partA)
 			block.Size = Vector3.new(depth, axialWidth, chordLength)
-			block.CFrame = CFrame.lookAt(midPoint, midPoint + tangent, hingeAxis)
+			block.CFrame = CFrame.lookAt(midPoint, midPoint + chordDir, hingeAxis)
 			block.Parent = model
+			table.insert(blocks, block)
+		end
+
+		-- Extend adjacent blocks so their facing faces touch (OuterTouch)
+		-- Front = -Z = chord direction (toward next), Back = +Z (toward previous)
+		for i = 1, #blocks - 1 do
+			extendBlocksToTouch(blocks[i], Enum.NormalId.Front, blocks[i + 1], Enum.NormalId.Back)
+		end
+
+		-- Extend first/last blocks to touch the original clicked parts
+		if #blocks > 0 then
+			extendBlocksToTouch(partA, normalIdA, blocks[1], Enum.NormalId.Back)
+			extendBlocksToTouch(blocks[#blocks], Enum.NormalId.Front, partB, normalIdB)
 		end
 	end
 
