@@ -307,7 +307,7 @@ local function doSweep(
 	local a_coeff = nA:Dot(nA)
 	local b_coeff = nA:Dot(nB)
 	local c_coeff = nB:Dot(nB)
-	local sep = centerB - centerA
+	local sep = centerA - centerB
 	local d_coeff = nA:Dot(sep)
 	local e_coeff = nB:Dot(sep)
 
