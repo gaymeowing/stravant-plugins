@@ -675,20 +675,41 @@ local function doSweep(
 			end
 		end
 
-		-- Extend adjacent segments so their facing faces touch (OuterTouch)
 		-- For cylinders: axis is X, so end faces are Right (+X forward) / Left (-X backward)
 		-- For blocks: axis is Z, so end faces are Front (-Z forward) / Back (+Z backward)
 		local fwdFace = if useCylinders then Enum.NormalId.Right else Enum.NormalId.Front
 		local bwdFace = if useCylinders then Enum.NormalId.Left else Enum.NormalId.Back
 
-		for i = 1, #blocks - 1 do
-			extendBlocksToTouch(blocks[i], fwdFace, blocks[i + 1], bwdFace)
-		end
+		if useCylinders and avoidZFighting then
+			-- Place spheres at interior joints to fill gaps between cylinder segments
+			for i = 1, segmentCount - 1 do
+				local frac = i / segmentCount
+				local point = bezierPoint(frac)
+				local depth = depthA_radial + (depthB_radial - depthA_radial) * frac
+				local sphere = Instance.new("Part")
+				sphere.Shape = Enum.PartType.Ball
+				copyPartProps(partA, sphere)
+				sphere.Size = Vector3.new(depth, depth, depth)
+				sphere.CFrame = CFrame.new(point)
+				sphere.Parent = model
+			end
 
-		-- Extend first/last segments to touch the original clicked parts
-		if #blocks > 0 then
-			extendBlocksToTouch(partA, normalIdA, blocks[1], bwdFace)
-			extendBlocksToTouch(blocks[#blocks], fwdFace, partB, normalIdB)
+			-- Still extend first/last segments to touch the source parts
+			if #blocks > 0 then
+				extendBlocksToTouch(partA, normalIdA, blocks[1], bwdFace)
+				extendBlocksToTouch(blocks[#blocks], fwdFace, partB, normalIdB)
+			end
+		else
+			-- Extend adjacent segments so their facing faces touch (OuterTouch)
+			for i = 1, #blocks - 1 do
+				extendBlocksToTouch(blocks[i], fwdFace, blocks[i + 1], bwdFace)
+			end
+
+			-- Extend first/last segments to touch the original clicked parts
+			if #blocks > 0 then
+				extendBlocksToTouch(partA, normalIdA, blocks[1], bwdFace)
+				extendBlocksToTouch(blocks[#blocks], fwdFace, partB, normalIdB)
+			end
 		end
 	end
 
