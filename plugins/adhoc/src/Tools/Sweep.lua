@@ -200,6 +200,19 @@ local function isBlockPart(part: BasePart?): boolean
 	return false
 end
 
+local function isCylinderPart(part: BasePart?): boolean
+	if not part then
+		return false
+	end
+	if part:IsA("Part") then
+		return part.Shape == Enum.PartType.Cylinder
+	end
+	return false
+end
+
+local function isSweepablePart(part: BasePart?): boolean
+	return isBlockPart(part) or isCylinderPart(part)
+end
 
 -- Get the two tangent axes for a face (axes perpendicular to the normal)
 local function getFaceTangents(normalId: Enum.NormalId): (Vector3, Vector3)
@@ -402,6 +415,8 @@ local function doSweep(
 	local halfSizeB = sizeAlongNormal(partB.Size, normalIdB) / 2
 	local centerB = partB.CFrame:PointToWorldSpace(axisB * halfSizeB)
 
+	local useCylinders = isCylinderPart(partA) and isCylinderPart(partB)
+
 	-- Get face tangent dimensions for A (we use A's properties for the sweep)
 	local tanA1, tanA2 = getFaceTangents(normalIdA)
 	local tanA1_world = partA.CFrame:VectorToWorldSpace(tanA1)
@@ -444,12 +459,21 @@ local function doSweep(
 				bridgeHeight = widthA1
 			end
 
-			local block = Instance.new("Part")
-			block.Shape = Enum.PartType.Block
-			copyPartProps(partA, block)
-			block.Size = Vector3.new(bridgeWidth, bridgeHeight, dist)
-			block.CFrame = CFrame.lookAt(midpoint, midpoint + bridgeDir, upDir)
-			block.Parent = model
+			if useCylinders then
+				local cyl = Instance.new("Part")
+				cyl.Shape = Enum.PartType.Cylinder
+				copyPartProps(partA, cyl)
+				cyl.Size = Vector3.new(dist, bridgeWidth, bridgeWidth)
+				cyl.CFrame = CFrame.fromMatrix(midpoint, bridgeDir, upDir)
+				cyl.Parent = model
+			else
+				local block = Instance.new("Part")
+				block.Shape = Enum.PartType.Block
+				copyPartProps(partA, block)
+				block.Size = Vector3.new(bridgeWidth, bridgeHeight, dist)
+				block.CFrame = CFrame.lookAt(midpoint, midpoint + bridgeDir, upDir)
+				block.Parent = model
+			end
 
 			model.Parent = partA.Parent
 			return
@@ -572,7 +596,7 @@ local function doSweep(
 	local model = Instance.new("Model")
 	model.Name = "Sweep"
 
-	if avoidZFighting then
+	if avoidZFighting and not useCylinders then
 		-- Wedge mode: sample at N+1 points, fill trapezoids with triangles
 		type SweepSample = { inner: Vector3, outer: Vector3 }
 		local samples: { SweepSample } = {}
@@ -632,25 +656,39 @@ local function doSweep(
 			local chordLength = chord.Magnitude
 			local depth = depthA_radial + (depthB_radial - depthA_radial) * fracMid
 
-			local block = Instance.new("Part")
-			block.Shape = Enum.PartType.Block
-			copyPartProps(partA, block)
-			block.Size = Vector3.new(depth, axialWidth, chordLength)
-			block.CFrame = CFrame.lookAt(midPoint, midPoint + chordDir, hingeAxis)
-			block.Parent = model
-			table.insert(blocks, block)
+			if useCylinders then
+				local cyl = Instance.new("Part")
+				cyl.Shape = Enum.PartType.Cylinder
+				copyPartProps(partA, cyl)
+				cyl.Size = Vector3.new(chordLength, depth, depth)
+				cyl.CFrame = CFrame.fromMatrix(midPoint, chordDir, hingeAxis)
+				cyl.Parent = model
+				table.insert(blocks, cyl)
+			else
+				local block = Instance.new("Part")
+				block.Shape = Enum.PartType.Block
+				copyPartProps(partA, block)
+				block.Size = Vector3.new(depth, axialWidth, chordLength)
+				block.CFrame = CFrame.lookAt(midPoint, midPoint + chordDir, hingeAxis)
+				block.Parent = model
+				table.insert(blocks, block)
+			end
 		end
 
-		-- Extend adjacent blocks so their facing faces touch (OuterTouch)
-		-- Front = -Z = chord direction (toward next), Back = +Z (toward previous)
+		-- Extend adjacent segments so their facing faces touch (OuterTouch)
+		-- For cylinders: axis is X, so end faces are Right (+X forward) / Left (-X backward)
+		-- For blocks: axis is Z, so end faces are Front (-Z forward) / Back (+Z backward)
+		local fwdFace = if useCylinders then Enum.NormalId.Right else Enum.NormalId.Front
+		local bwdFace = if useCylinders then Enum.NormalId.Left else Enum.NormalId.Back
+
 		for i = 1, #blocks - 1 do
-			extendBlocksToTouch(blocks[i], Enum.NormalId.Front, blocks[i + 1], Enum.NormalId.Back)
+			extendBlocksToTouch(blocks[i], fwdFace, blocks[i + 1], bwdFace)
 		end
 
-		-- Extend first/last blocks to touch the original clicked parts
+		-- Extend first/last segments to touch the original clicked parts
 		if #blocks > 0 then
-			extendBlocksToTouch(partA, normalIdA, blocks[1], Enum.NormalId.Back)
-			extendBlocksToTouch(blocks[#blocks], Enum.NormalId.Front, partB, normalIdB)
+			extendBlocksToTouch(partA, normalIdA, blocks[1], bwdFace)
+			extendBlocksToTouch(blocks[#blocks], fwdFace, partB, normalIdB)
 		end
 	end
 
@@ -830,7 +868,7 @@ end
 local Sweep: ToolTypes.ToolDefinition = {
 	Id = "sweep",
 	Name = "Sweep Arc",
-	Description = "Create an arc of geometry between two faces. Disable \"Avoid Z-Fighting\" to use fewer basic Block parts to fill the space at the cost of some Z-fighting.",
+	Description = "Create an arc of geometry between two faces. Supports Block and Cylinder parts. Disable \"Avoid Z-Fighting\" to use fewer basic parts at the cost of some Z-fighting.",
 
 	DefaultSettings = {
 		SegmentCount = 6,
@@ -850,7 +888,7 @@ local Sweep: ToolTypes.ToolDefinition = {
 		local target = ctx.Target
 		local targetPosition = ctx.TargetPosition
 
-		if not isBlockPart(target) or not targetPosition then
+		if not isSweepablePart(target) or not targetPosition then
 			clearHover()
 			return
 		end
@@ -878,7 +916,7 @@ local Sweep: ToolTypes.ToolDefinition = {
 
 	OnClicked = function(ctx: ToolContext)
 		if mState == "idle" then
-			if not isBlockPart(ctx.Target) or not ctx.TargetPosition then
+			if not isSweepablePart(ctx.Target) or not ctx.TargetPosition then
 				return
 			end
 			local part = ctx.Target :: BasePart
@@ -896,8 +934,8 @@ local Sweep: ToolTypes.ToolDefinition = {
 			ctx.UpdateUI()
 
 		elseif mState == "faceB" then
-			-- Cancel if clicking nothing, non-block, locked, or same part
-			if not isBlockPart(ctx.Target) or not ctx.TargetPosition then
+			-- Cancel if clicking nothing, unsupported shape, locked, or same part
+			if not isSweepablePart(ctx.Target) or not ctx.TargetPosition then
 				clearState()
 				ctx.UpdateUI()
 				return
