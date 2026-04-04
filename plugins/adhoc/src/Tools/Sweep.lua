@@ -682,8 +682,8 @@ local function doSweep(
 		local bwdFace = if useCylinders then Enum.NormalId.Left else Enum.NormalId.Back
 
 		if useCylinders and useSphereJoints then
-			-- Place spheres at interior joints to fill gaps between cylinder segments
-			for i = 1, segmentCount - 1 do
+			-- Place spheres at all joints (including endpoints) to fill gaps
+			for i = 0, segmentCount do
 				local frac = i / segmentCount
 				local point = bezierPoint(frac)
 				local depth = depthA_radial + (depthB_radial - depthA_radial) * frac
@@ -693,12 +693,6 @@ local function doSweep(
 				sphere.Size = Vector3.new(depth, depth, depth)
 				sphere.CFrame = CFrame.new(point)
 				sphere.Parent = model
-			end
-
-			-- Still extend first/last segments to touch the source parts
-			if #blocks > 0 then
-				extendBlocksToTouch(partA, normalIdA, blocks[1], bwdFace)
-				extendBlocksToTouch(blocks[#blocks], fwdFace, partB, normalIdB)
 			end
 		else
 			-- Extend adjacent segments so their facing faces touch (OuterTouch)
