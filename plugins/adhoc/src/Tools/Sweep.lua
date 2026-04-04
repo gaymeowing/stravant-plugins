@@ -401,7 +401,8 @@ local function doSweep(
 	partA: BasePart, normalIdA: Enum.NormalId,
 	partB: BasePart, normalIdB: Enum.NormalId,
 	segmentCount: number,
-	avoidZFighting: boolean
+	avoidZFighting: boolean,
+	useSphereJoints: boolean
 )
 	-- Compute face geometry for A
 	local axisA = NORMAL_ID_VECTORS[normalIdA]
@@ -680,7 +681,7 @@ local function doSweep(
 		local fwdFace = if useCylinders then Enum.NormalId.Right else Enum.NormalId.Front
 		local bwdFace = if useCylinders then Enum.NormalId.Left else Enum.NormalId.Back
 
-		if useCylinders and avoidZFighting then
+		if useCylinders and useSphereJoints then
 			-- Place spheres at interior joints to fill gaps between cylinder segments
 			for i = 1, segmentCount - 1 do
 				local frac = i / segmentCount
@@ -836,6 +837,7 @@ end
 local function SweepSettings(props: ToolSettingsProps)
 	local segmentCount = props.GetSetting("SegmentCount") :: number
 	local avoidZFighting = props.GetSetting("AvoidZFighting") :: boolean
+	local sphereJoints = props.GetSetting("SphereJoints") :: boolean
 
 	local stateText = if mState == "idle"
 		then "Click first face"
@@ -879,6 +881,14 @@ local function SweepSettings(props: ToolSettingsProps)
 			end,
 			LayoutOrder = 3,
 		}),
+		SphereJointsCheckbox = e(Checkbox, {
+			Label = "Sphere Joints (Cylinders)",
+			Checked = sphereJoints,
+			Changed = function(newValue: boolean)
+				props.SetSetting("SphereJoints", newValue)
+			end,
+			LayoutOrder = 4,
+		}),
 	})
 end
 
@@ -894,6 +904,7 @@ local Sweep: ToolTypes.ToolDefinition = {
 	DefaultSettings = {
 		SegmentCount = 6,
 		AvoidZFighting = true,
+		SphereJoints = true,
 	},
 
 	OnActivated = function(ctx: ToolContext)
@@ -973,10 +984,11 @@ local Sweep: ToolTypes.ToolDefinition = {
 			local normalIdB = getTargetFace(part, ctx.TargetPosition)
 			local segmentCount = ctx.GetSetting("SegmentCount") :: number
 			local avoidZFighting = ctx.GetSetting("AvoidZFighting") :: boolean
+			local useSphereJoints = ctx.GetSetting("SphereJoints") :: boolean
 
 			local id = ctx.BeginRecording("Sweep")
 
-			doSweep(partA, normalIdA, part, normalIdB, segmentCount, avoidZFighting)
+			doSweep(partA, normalIdA, part, normalIdB, segmentCount, avoidZFighting, useSphereJoints)
 
 			if id then
 				ctx.FinishRecording(id)
