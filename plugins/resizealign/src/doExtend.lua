@@ -26,6 +26,28 @@ export type Face = {
 
 export type ResizeMode = Settings.ResizeMode
 
+-- Face normals within this sine-of-angle of one another are considered exactly
+-- parallel. float32 CFrame rotation error is on the order of 1e-7, so this is
+-- safely above pure floating point noise while still permitting deliberate
+-- angles ~1000x smaller than kNearParallelSinAngle.
+local kParallelSinAngle = 1e-5
+
+-- Below this angle (~0.57 degrees) faces used to be unconditionally treated as
+-- parallel. Now the true angled solve is attempted first, and this instead
+-- bounds where the parallel behavior is used as the *fallback* when that solve
+-- requires an absurdly distant intersection or an impossible shrink. Above
+-- this angle failed solves remain a no-op, as they always have been.
+local kNearParallelSinAngle = 0.01
+
+-- Bounds on how far a part may be extended to meet the true intersection of
+-- two nearly parallel faces before falling back to the parallel behavior:
+-- an absolute bound of the Roblox max part size (larger isn't buildable), and
+-- a relative bound of a multiple of the size of the geometry being operated
+-- on (an intersection many times further away than the parts are large is not
+-- what the user was aiming for).
+local kMaxExtension = 2048
+local kMaxExtensionFactor = 8
+
 local function getFacePoints(face: Face)
 	local hsize = face.Object.Size / 2
 	local cf = face.Object.CFrame
@@ -330,12 +352,52 @@ local function doExtend(faceA: Face, faceB: Face, resizeMode: ResizeMode, acuteW
 	local dirA = getNormal(faceA)
 	local dirB = getNormal(faceB)
 
-	local a, b, c = dirA:Dot(dirA), dirA:Dot(dirB), dirB:Dot(dirB)
-	local denom = a*c - b*b
-	local isParallel = math.abs(denom) < 0.0001
+	-- Sine of the angle between the faces via the cross product, which stays
+	-- well-conditioned at small angles (1 - cos^2 suffers cancellation there)
+	local sinAngle = dirA:Cross(dirB).Magnitude
+
+	-- Resize faceA to meet the plane of faceB. Used when the faces are
+	-- parallel, or so close to parallel that meeting at the true intersection
+	-- of the faces is not buildable.
+	local function doParallelResize()
+		local extendPointA, extendPointB
+		if resizeMode == "ExtendUpTo" or resizeMode == "InnerTouch" then
+			extendPointA = getNegativePointToFace(faceB, pointsA)
+			extendPointB = getNegativePointToFace(faceA, pointsB)
+		else
+			extendPointA = getPositivePointToFace(faceB, pointsA)
+			extendPointB = getPositivePointToFace(faceA, pointsB)
+		end
+
+		local lenA = (extendPointA - extendPointB):Dot(dirB)
+		if dirA:Dot(dirB) > 0 then
+			lenA = -lenA
+		end
+		if isExtrusionFace(faceA) then
+			if lenA < 0 then
+				return
+			end
+		else
+			local extendableA = (localDimensionA * faceA.Object.Size).Magnitude
+			if lenA < -extendableA then
+				return
+			end
+		end
+
+		local recording = ChangeHistoryService:TryBeginRecording("ResizeAlign")
+		resizePart(faceA, lenA)
+		if recording then
+			ChangeHistoryService:FinishRecording(recording, Enum.FinishRecordingOperation.Commit)
+		end
+	end
+
+	if sinAngle < kParallelSinAngle then
+		doParallelResize()
+		return
+	end
 
 	local extendPointA, extendPointB;
-	if resizeMode == "ExtendInto" or resizeMode == "OuterTouch" or resizeMode == "WedgeJoin" or resizeMode == "ButtJoint" or (isParallel and resizeMode == "RoundedJoin") then
+	if resizeMode == "ExtendInto" or resizeMode == "OuterTouch" or resizeMode == "WedgeJoin" or resizeMode == "ButtJoint" then
 		extendPointA = getPositivePointToFace(faceB, pointsA)
 		extendPointB = getPositivePointToFace(faceA, pointsB)
 	elseif resizeMode == "ExtendUpTo" or resizeMode == "InnerTouch" then
@@ -361,37 +423,15 @@ local function doExtend(faceA: Face, faceB: Face, resizeMode: ResizeMode, acuteW
 	end
 
 	local startSep = extendPointB - extendPointA
-	local d, e = dirA:Dot(startSep), dirB:Dot(startSep)
+	-- Closest-point-of-two-rays solve in cross product form, which keeps its
+	-- precision at small angles. The classical dot product form
+	-- (b*e - c*d) / (a*c - b*b) catastrophically cancels for nearly parallel
+	-- rays, amplifying float32 input noise by 1/sin^2(angle).
+	local crossDir = dirA:Cross(dirB)
+	local denom = sinAngle * sinAngle
 
-	if isParallel then
-		local lenA = (extendPointA - extendPointB):Dot(getNormal(faceB))
-		if isExtrusionFace(faceA) then
-			if getNormal(faceA):Dot(getNormal(faceB)) > 0 then
-				lenA = -lenA
-			end
-			if lenA < 0 then
-				return
-			end
-		else
-			local extendableA = (localDimensionA * faceA.Object.Size).Magnitude
-			if getNormal(faceA):Dot(getNormal(faceB)) > 0 then
-				lenA = -lenA
-			end
-			if lenA < -extendableA then
-				return
-			end
-		end
-
-		local recording = ChangeHistoryService:TryBeginRecording("ResizeAlign")
-		resizePart(faceA, lenA)
-		if recording then
-			ChangeHistoryService:FinishRecording(recording, Enum.FinishRecordingOperation.Commit)
-		end
-		return
-	end
-
-	local lenA = -(b*e - c*d) / denom
-	local lenB = -(a*e - b*d) / denom
+	local lenA = startSep:Cross(dirB):Dot(crossDir) / denom
+	local lenB = startSep:Cross(dirA):Dot(crossDir) / denom
 
 	-- For acute angles with OuterTouch, use InnerTouch + wedge fill for a sharp point
 	local acuteOuterTouch = resizeMode == "WedgeJoin"
@@ -402,9 +442,32 @@ local function doExtend(faceA: Face, faceB: Face, resizeMode: ResizeMode, acuteW
 		local innerPointA = getNegativePointToFace(faceB, pointsA)
 		local innerPointB = getNegativePointToFace(faceA, pointsB)
 		local innerSep = innerPointB - innerPointA
-		local id, ie = dirA:Dot(innerSep), dirB:Dot(innerSep)
-		lenA = -(b*ie - c*id) / denom
-		lenB = -(a*ie - b*id) / denom
+		lenA = innerSep:Cross(dirB):Dot(crossDir) / denom
+		lenB = innerSep:Cross(dirA):Dot(crossDir) / denom
+	end
+
+	local extendableA = (localDimensionA * faceA.Object.Size).Magnitude
+	local extendableB = (localDimensionB * faceB.Object.Size).Magnitude
+
+	-- Whether the parallel behavior should be used as the fallback if the
+	-- angled solve turns out to require something unreasonable.
+	local nearParallel = sinAngle < kNearParallelSinAngle
+
+	-- The faces are angled, but if they're only barely angled and meeting at
+	-- the true intersection requires an unreasonably large resize, do the
+	-- parallel behavior instead. (ExtendInto/ExtendUpTo are exempt: they
+	-- recompute their extension below by projection onto the target plane,
+	-- which never blows up at small angles.)
+	if nearParallel and resizeMode ~= "ExtendInto" and resizeMode ~= "ExtendUpTo" then
+		local maxLen = math.max(math.abs(lenA), math.abs(lenB))
+		if acuteOuterTouch then
+			maxLen = math.max(maxLen, math.abs(outerLenA), math.abs(outerLenB))
+		end
+		local operationScale = extendableA + extendableB + startSep.Magnitude
+		if maxLen > math.min(kMaxExtension, kMaxExtensionFactor * operationScale) then
+			doParallelResize()
+			return
+		end
 	end
 
 	if resizeMode == "ExtendInto" or resizeMode == "ExtendUpTo" then
@@ -437,12 +500,16 @@ local function doExtend(faceA: Face, faceB: Face, resizeMode: ResizeMode, acuteW
 		end
 	end
 
-	local extendableA = (localDimensionA * faceA.Object.Size).Magnitude
-	local extendableB = (localDimensionB * faceB.Object.Size).Magnitude
 	if lenA < -extendableA then
 		if isExtrusionFace(faceA) then
 			lenA = 0
 		else
+			-- Impossible shrink. If the faces are barely angled this used to
+			-- get the parallel behavior, so fall back to it rather than
+			-- silently doing nothing.
+			if nearParallel then
+				doParallelResize()
+			end
 			return
 		end
 	end
@@ -450,6 +517,9 @@ local function doExtend(faceA: Face, faceB: Face, resizeMode: ResizeMode, acuteW
 		if isExtrusionFace(faceB) then
 			lenB = 0
 		else
+			if nearParallel then
+				doParallelResize()
+			end
 			return
 		end
 	end

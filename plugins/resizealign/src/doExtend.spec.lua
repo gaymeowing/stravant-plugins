@@ -397,6 +397,121 @@ return function(t: TestContext)
 	end)
 
 	--------------------------------------------------------------------------------
+	-- Small angle handling
+	--------------------------------------------------------------------------------
+
+	t.test("OuterTouch: slightly angled parts meet at the true intersection", function()
+		-- 0.1 degrees is below the old hardcoded parallel threshold (~0.57 deg),
+		-- which incorrectly gave these clearly-angled parts the parallel treatment
+		local partA = makePart(CFrame.new(-5, 0, 0), Vector3.new(8, 1, 1))
+		local partB = makePart(
+			CFrame.new(5, 0, 0) * CFrame.Angles(0, 0, math.rad(0.1)),
+			Vector3.new(8, 1, 1)
+		)
+		local faceA = makeFace(partA, Enum.NormalId.Right)
+		local faceB = makeFace(partB, Enum.NormalId.Left)
+
+		doExtend(faceA, faceB, "OuterTouch")
+
+		-- The angled solve resizes both parts; the parallel treatment would
+		-- have only resized partA
+		t.expect(partA.Size.X ~= 8).toBe(true)
+		t.expect(partB.Size.X ~= 8).toBe(true)
+
+		-- Neither part should have blown up in size
+		t.expect(partA.Size.X < 100).toBe(true)
+		t.expect(partB.Size.X < 100).toBe(true)
+
+		-- The faces should truly meet: some corner of A's right face lies on
+		-- the plane of B's left face
+		local planePoint = partB.CFrame:PointToWorldSpace(Vector3.new(-partB.Size.X / 2, 0, 0))
+		local planeNormal = partB.CFrame:VectorToWorldSpace(Vector3.new(-1, 0, 0))
+		local hsize = partA.Size / 2
+		local minDist = math.huge
+		for _, j in {-1, 1} do
+			for _, k in {-1, 1} do
+				local corner = partA.CFrame:PointToWorldSpace(Vector3.new(hsize.X, j * hsize.Y, k * hsize.Z))
+				minDist = math.min(minDist, math.abs((corner - planePoint):Dot(planeNormal)))
+			end
+		end
+		t.expect(minDist < EPSILON).toBe(true)
+
+		cleanup(partA, partB)
+	end)
+
+	t.test("OuterTouch: angle within floating point noise acts as parallel", function()
+		local partA = makePart(CFrame.new(-3, 0, 0), Vector3.new(2, 2, 2))
+		local partB = makePart(
+			CFrame.new(3, 0, 0) * CFrame.Angles(0, 0, 1e-6),
+			Vector3.new(2, 2, 2)
+		)
+		local faceA = makeFace(partA, Enum.NormalId.Right)
+		local faceB = makeFace(partB, Enum.NormalId.Left)
+
+		local origSizeB = partB.Size
+
+		doExtend(faceA, faceB, "OuterTouch")
+
+		-- Parallel treatment: partA extends to partB's face, partB untouched
+		t.expect(approxEqual(partA.Size.X, 6)).toBe(true)
+		t.expect(partB.Size).toBe(origSizeB)
+
+		cleanup(partA, partB)
+	end)
+
+	t.test("OuterTouch: barely angled parts with a distant intersection get the parallel treatment", function()
+		-- At 0.01 degrees the true intersection of these laterally offset
+		-- faces is hundreds of thousands of studs away, so the parallel
+		-- behavior is what the user wants
+		local partA = makePart(CFrame.new(-3, 0, 0), Vector3.new(2, 2, 2))
+		local partB = makePart(
+			CFrame.new(3, 50, 0) * CFrame.Angles(0, 0, math.rad(0.01)),
+			Vector3.new(2, 2, 2)
+		)
+		local faceA = makeFace(partA, Enum.NormalId.Right)
+		local faceB = makeFace(partB, Enum.NormalId.Left)
+
+		local origSizeB = partB.Size
+
+		doExtend(faceA, faceB, "OuterTouch")
+
+		-- partB untouched, partA extended to partB's face plane, not to the
+		-- distant true intersection
+		t.expect(partB.Size).toBe(origSizeB)
+		t.expect(partA.Size.X > 2).toBe(true)
+		t.expect(partA.Size.X < 10).toBe(true)
+
+		cleanup(partA, partB)
+	end)
+
+	t.test("WedgeJoin: slightly angled parts join without giant wedges", function()
+		local partA = makePart(CFrame.new(-3, 0, 0), Vector3.new(2, 2, 2))
+		local partB = makePart(
+			CFrame.new(3, 0, 0) * CFrame.Angles(0, 0, math.rad(0.05)),
+			Vector3.new(2, 2, 2)
+		)
+		local faceA = makeFace(partA, Enum.NormalId.Right)
+		local faceB = makeFace(partB, Enum.NormalId.Left)
+
+		doExtend(faceA, faceB, "WedgeJoin")
+
+		-- Part A should have been extended, and nothing created or resized
+		-- should be anywhere near giant
+		t.expect(partA.Size.X > 2).toBe(true)
+		t.expect(partA.Size.X < 100).toBe(true)
+		t.expect(partB.Size.X < 100).toBe(true)
+		for _, child in workspace:GetChildren() do
+			if child:IsA("WedgePart") then
+				t.expect(child.Size.X < 100).toBe(true)
+				t.expect(child.Size.Y < 100).toBe(true)
+				t.expect(child.Size.Z < 100).toBe(true)
+			end
+		end
+
+		cleanup(partA, partB)
+	end)
+
+	--------------------------------------------------------------------------------
 	-- InnerTouch
 	--------------------------------------------------------------------------------
 
