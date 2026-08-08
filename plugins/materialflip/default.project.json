@@ -1,5 +1,8 @@
 {
-	"name": "MaterialFlip v1.1.0",
+	"name": "MaterialFlip v2.0",
+	"globIgnorePaths": [
+		"**/*.spec.lua"
+	],
 	"tree": {
 		"$className": "Folder",
 		"Src": {
@@ -8,6 +11,8 @@
 		"Packages": {
 			"$path": "Packages"
 		},
-		"$path": "extra"
+		"Loader": {
+			"$path": "loader.server.lua"
+		}
 	}
 }

@@ -1,6 +1,6 @@
 [package]
-name = "create-shared-toolbar"
-version = "0.1.0"
+name = "GoodSignal"
+version = "0.3.1"
 license = "MIT"
 authors = [ "Mark Langen <stravant@gmail.com>" ]
 content_root = "src"
