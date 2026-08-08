@@ -6,4 +6,6 @@ realm = "shared"
 
 [dependencies]
 Signal = "stravant/goodsignal@0.3.0"
+React = "jsdotlua/react@17.1.0"
+ReactRoblox = "jsdotlua/react-roblox@17.1.0"
 createSharedToolbar = "stravant/create-shared-toolbar@0.1.0"

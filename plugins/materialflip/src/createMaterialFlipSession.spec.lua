@@ -3,11 +3,12 @@
 local CoreGui = game:GetService("CoreGui")
 
 local TestTypes = require("./TestTypes")
+local TestHelpers = require("./TestHelpers")
 local createMaterialFlipSession = require("./createMaterialFlipSession")
 
 return function(t: TestTypes.TestContext)
 	t.test("creates and destroys cleanly, managing its highlight", function()
-		local session = createMaterialFlipSession()
+		local session = createMaterialFlipSession(TestHelpers.makeTestSettings())
 		t.expect(session.GetHoverPart()).toBe(nil)
 		t.expect(CoreGui:FindFirstChild("MaterialFlipHighlight")).toBeTruthy()
 
@@ -16,7 +17,7 @@ return function(t: TestTypes.TestContext)
 	end)
 
 	t.test("TestClick flips a flippable part and skips a locked one", function()
-		local session = createMaterialFlipSession()
+		local session = createMaterialFlipSession(TestHelpers.makeTestSettings())
 
 		local part = Instance.new("Part")
 		part.Anchored = true

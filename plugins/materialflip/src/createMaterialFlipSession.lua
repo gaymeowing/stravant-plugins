@@ -10,10 +10,12 @@ local Signal = require(Packages.Signal)
 
 local canFlip = require("./canFlip")
 local doFlip = require("./doFlip")
+local Settings = require("./Settings")
 
 export type MaterialFlipSession = {
 	ChangeSignal: Signal.Signal<>,
 	GetHoverPart: () -> BasePart?,
+	Update: () -> (),
 	Destroy: () -> (),
 	TestClick: (part: BasePart, point: Vector3, normalId: Enum.NormalId) -> (),
 }
@@ -70,7 +72,8 @@ local function getTarget(): (BasePart?, Vector3, Enum.NormalId)
 	return hit, at, targetSurface
 end
 
-local function createMaterialFlipSession(): MaterialFlipSession
+local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSettings): MaterialFlipSession
+	local _ = activeSettings -- Not used yet: RotateDirection behavior comes later
 	local changeSignal = Signal.new()
 
 	local mHoverPart: BasePart? = nil
@@ -120,6 +123,9 @@ local function createMaterialFlipSession(): MaterialFlipSession
 		ChangeSignal = changeSignal,
 		GetHoverPart = function()
 			return mHoverPart
+		end,
+		Update = function()
+			-- Called when settings change, nothing to do currently
 		end,
 		Destroy = function()
 			mDestroyed = true
