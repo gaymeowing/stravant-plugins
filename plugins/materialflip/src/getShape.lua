@@ -1,8 +1,10 @@
 --!strict
 
 -- Classify a part's shape for the purposes of material flipping.
+-- Note: Balls and Cylinders are distinct because they have different
+-- symmetry groups (a cylinder's axis must map to itself, a ball's needn't).
 
-export type Shape = "Brick" | "Wedge" | "CornerWedge" | "Round" | "Terrain"
+export type Shape = "Brick" | "Wedge" | "CornerWedge" | "Cylinder" | "Ball" | "Terrain"
 
 local kUniformScale = Vector3.new(1, 1, 1)
 
@@ -19,10 +21,10 @@ local function getShape(part: BasePart): (Shape, Vector3)
 				return "CornerWedge", scale
 			elseif meshType == Enum.MeshType.Wedge then
 				return "Wedge", scale
-			elseif meshType == Enum.MeshType.Cylinder or
-				meshType == Enum.MeshType.Sphere or
-				meshType == Enum.MeshType.Head then
-				return "Round", scale
+			elseif meshType == Enum.MeshType.Cylinder then
+				return "Cylinder", scale
+			elseif meshType == Enum.MeshType.Sphere or meshType == Enum.MeshType.Head then
+				return "Ball", scale
 			else
 				warn("MaterialFlip: Unsupported mesh type, treating as a normal brick.")
 				return "Brick", scale
@@ -37,8 +39,10 @@ local function getShape(part: BasePart): (Shape, Vector3)
 		return "Terrain", kUniformScale
 	elseif part:IsA("Part") then
 		local shape = part.Shape
-		if shape == Enum.PartType.Ball or shape == Enum.PartType.Cylinder then
-			return "Round", kUniformScale
+		if shape == Enum.PartType.Ball then
+			return "Ball", kUniformScale
+		elseif shape == Enum.PartType.Cylinder then
+			return "Cylinder", kUniformScale
 		elseif shape == Enum.PartType.Wedge then
 			return "Wedge", kUniformScale
 		elseif shape == Enum.PartType.CornerWedge then

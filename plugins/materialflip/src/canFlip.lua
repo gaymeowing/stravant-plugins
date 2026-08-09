@@ -1,6 +1,6 @@
 --!strict
 
-local getShape = require("./getShape")
+local identifyPart = require("./identifyPart")
 
 -- Whether a given part can have its material orientation flipped.
 local function canFlip(part: BasePart?): boolean
@@ -11,8 +11,7 @@ local function canFlip(part: BasePart?): boolean
 	if part.Locked then
 		return false
 	end
-	local shape = getShape(part)
-	return shape == "Brick" or shape == "Wedge" or shape == "Round"
+	return identifyPart(part) ~= nil
 end
 
 return canFlip

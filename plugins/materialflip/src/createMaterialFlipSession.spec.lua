@@ -23,7 +23,10 @@ return function(t: TestTypes.TestContext)
 		part.Anchored = true
 		part.Size = Vector3.new(1, 2, 3)
 		part.Parent = workspace
-		session.TestClick(part, part.Position + Vector3.new(0, 1, 0), Enum.NormalId.Top)
+		local result = session.TestClick(part, part.Position + Vector3.new(0, 1, 0))
+		if result ~= part then
+			t.fail("Expected an in-place flip")
+		end
 		if (part.Size - Vector3.new(3, 2, 1)).Magnitude > 0.001 then
 			t.fail(`Expected part to be flipped, size is {part.Size}`)
 		end
@@ -34,7 +37,10 @@ return function(t: TestTypes.TestContext)
 		locked.Locked = true
 		locked.Size = Vector3.new(1, 2, 3)
 		locked.Parent = workspace
-		session.TestClick(locked, locked.Position + Vector3.new(0, 1, 0), Enum.NormalId.Top)
+		local lockedResult = session.TestClick(locked, locked.Position + Vector3.new(0, 1, 0))
+		if lockedResult ~= nil then
+			t.fail("Expected locked part to be skipped")
+		end
 		if (locked.Size - Vector3.new(1, 2, 3)).Magnitude > 0.001 then
 			t.fail(`Expected locked part to be unchanged, size is {locked.Size}`)
 		end

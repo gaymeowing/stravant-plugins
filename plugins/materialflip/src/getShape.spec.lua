@@ -11,15 +11,15 @@ return function(t: TestTypes.TestContext)
 		part:Destroy()
 	end)
 
-	t.test("classifies balls and cylinders as Round", function()
+	t.test("distinguishes balls from cylinders", function()
 		local ball = Instance.new("Part")
 		ball.Shape = Enum.PartType.Ball
-		t.expect(getShape(ball)).toBe("Round")
+		t.expect(getShape(ball)).toBe("Ball")
 		ball:Destroy()
 
 		local cylinder = Instance.new("Part")
 		cylinder.Shape = Enum.PartType.Cylinder
-		t.expect(getShape(cylinder)).toBe("Round")
+		t.expect(getShape(cylinder)).toBe("Cylinder")
 		cylinder:Destroy()
 	end)
 
@@ -45,7 +45,9 @@ return function(t: TestTypes.TestContext)
 		local mesh = Instance.new("SpecialMesh")
 		mesh.MeshType = Enum.MeshType.Cylinder
 		mesh.Parent = part
-		t.expect(getShape(part)).toBe("Round")
+		t.expect(getShape(part)).toBe("Cylinder")
+		mesh.MeshType = Enum.MeshType.Sphere
+		t.expect(getShape(part)).toBe("Ball")
 		part:Destroy()
 	end)
 end

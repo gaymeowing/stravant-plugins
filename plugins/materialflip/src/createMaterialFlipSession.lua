@@ -17,15 +17,17 @@ export type MaterialFlipSession = {
 	GetHoverPart: () -> BasePart?,
 	Update: () -> (),
 	Destroy: () -> (),
-	TestClick: (part: BasePart, point: Vector3, normalId: Enum.NormalId) -> (),
+	TestClick: (part: BasePart, point: Vector3) -> BasePart?,
 }
 
--- Raycast the mouse into the scene, returning the hit part, the hit point,
--- and the box face of the part that the hit point is closest to.
-local function getTarget(): (BasePart?, Vector3, Enum.NormalId)
+-- Raycast the mouse into the scene, returning the hit part and hit point.
+-- Which bounding box face the click acts on is determined by doFlip from the
+-- hit point, in the shape's frame (not the raw hit surface, which matters
+-- for curved and mesh-represented parts).
+local function getTarget(): (BasePart?, Vector3)
 	local camera = workspace.CurrentCamera
 	if not camera then
-		return nil, Vector3.zero, Enum.NormalId.Top
+		return nil, Vector3.zero
 	end
 
 	local mouseLocation = UserInputService:GetMouseLocation()
@@ -38,42 +40,18 @@ local function getTarget(): (BasePart?, Vector3, Enum.NormalId)
 
 	local result = workspace:Raycast(ray.Origin, ray.Direction * 9999, raycastParams)
 	if not result then
-		return nil, Vector3.zero, Enum.NormalId.Top
+		return nil, Vector3.zero
 	end
 
 	local hit = result.Instance
 	if not hit:IsA("BasePart") then
-		return nil, Vector3.zero, Enum.NormalId.Top
+		return nil, Vector3.zero
 	end
 
-	local at = result.Position
-	local localDisp = hit.CFrame:VectorToObjectSpace(at - hit.Position)
-	local halfSize = hit.Size / 2
-	local smallest = math.huge
-	local targetSurface = Enum.NormalId.Top
-
-	local candidates = {
-		{Enum.NormalId.Right, math.abs(localDisp.X - halfSize.X)},
-		{Enum.NormalId.Left, math.abs(localDisp.X + halfSize.X)},
-		{Enum.NormalId.Top, math.abs(localDisp.Y - halfSize.Y)},
-		{Enum.NormalId.Bottom, math.abs(localDisp.Y + halfSize.Y)},
-		{Enum.NormalId.Back, math.abs(localDisp.Z - halfSize.Z)},
-		{Enum.NormalId.Front, math.abs(localDisp.Z + halfSize.Z)},
-	}
-	for _, candidate in candidates do
-		local normalId = candidate[1] :: Enum.NormalId
-		local dist = candidate[2] :: number
-		if dist < smallest then
-			smallest = dist
-			targetSurface = normalId
-		end
-	end
-
-	return hit, at, targetSurface
+	return hit, result.Position
 end
 
 local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSettings): MaterialFlipSession
-	local _ = activeSettings -- Not used yet: RotateDirection behavior comes later
 	local changeSignal = Signal.new()
 
 	local mHoverPart: BasePart? = nil
@@ -87,14 +65,17 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 	highlight.OutlineColor = (settings().Studio :: any)["Select Color"]
 	highlight.Parent = CoreGui
 
-	local function updateHover()
-		local hit = getTarget()
-		local newHoverPart = if hit and canFlip(hit) then hit else nil
-		if newHoverPart ~= mHoverPart then
-			mHoverPart = newHoverPart
-			highlight.Adornee = newHoverPart
+	local function setHoverPart(part: BasePart?)
+		if part ~= mHoverPart then
+			mHoverPart = part
+			highlight.Adornee = part
 			changeSignal:Fire()
 		end
+	end
+
+	local function updateHover()
+		local hit = getTarget()
+		setHoverPart(if hit and canFlip(hit) then hit else nil)
 	end
 
 	table.insert(connections, UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
@@ -102,10 +83,12 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 		if mDestroyed then return end
 
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			local hit, at, normalId = getTarget()
+			local hit, at = getTarget()
 			if hit and canFlip(hit) then
-				doFlip(hit, at, normalId)
-				updateHover()
+				local result = doFlip(hit, at, activeSettings.RotateDirection == "Clockwise")
+				if result then
+					setHoverPart(result)
+				end
 			end
 		end
 	end))
@@ -137,10 +120,11 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 			highlight:Destroy()
 			mHoverPart = nil
 		end,
-		TestClick = function(part: BasePart, point: Vector3, normalId: Enum.NormalId)
+		TestClick = function(part: BasePart, point: Vector3): BasePart?
 			if canFlip(part) then
-				doFlip(part, point, normalId)
+				return doFlip(part, point, activeSettings.RotateDirection == "Clockwise")
 			end
+			return nil
 		end,
 	}
 	return session

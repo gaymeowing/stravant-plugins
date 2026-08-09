@@ -2,6 +2,8 @@
 
 local TestTypes = require("./TestTypes")
 local doFlip = require("./doFlip")
+local identifyPart = require("./identifyPart")
+local TestHelpers = require("./TestHelpers")
 
 return function(t: TestTypes.TestContext)
 	local function expectVectorNear(actual: Vector3, expected: Vector3)
@@ -10,43 +12,75 @@ return function(t: TestTypes.TestContext)
 		end
 	end
 
-	t.test("flipping a brick about Top swaps the X/Z dimensions in place", function()
+	local function expectCFrameNear(actual: CFrame, expected: CFrame)
+		expectVectorNear(actual.Position, expected.Position)
+		expectVectorNear(actual.XVector, expected.XVector)
+		expectVectorNear(actual.YVector, expected.YVector)
+		expectVectorNear(actual.ZVector, expected.ZVector)
+	end
+
+	-- The world space characteristic points of the region a part represents
+	local function regionPoints(part: BasePart): {Vector3}
+		local state = identifyPart(part)
+		assert(state, "part must be identifiable")
+		local points = {}
+		for _, p in TestHelpers.shapePoints(state.Shape, state.ShapeSize) do
+			table.insert(points, state.ShapeCFrame:PointToWorldSpace(p))
+		end
+		return points
+	end
+
+	local function expectSameRegion(before: {Vector3}, part: BasePart)
+		if not TestHelpers.samePointSets(before, regionPoints(part)) then
+			t.fail("Region changed during flip")
+		end
+	end
+
+	t.test("brick flips in place about Top, four times returns to start", function()
 		local part = Instance.new("Part")
 		part.Anchored = true
 		part.Size = Vector3.new(1, 2, 3)
 		part.CFrame = CFrame.new(10, 20, 30)
 		part.Parent = workspace
+		local originalCFrame = part.CFrame
+		local region = regionPoints(part)
 
-		doFlip(part, part.Position + Vector3.new(0, 1, 0), Enum.NormalId.Top)
-
+		local topPoint = Vector3.new(10, 21, 30)
+		local result = doFlip(part, topPoint, true)
+		t.expect(result).toBe(part) -- in place, brick stays a brick
 		expectVectorNear(part.Size, Vector3.new(3, 2, 1))
 		expectVectorNear(part.Position, Vector3.new(10, 20, 30))
-		-- Quarter turn about +Y: +X ends up pointing at -Z
-		expectVectorNear(part.CFrame.XVector, Vector3.new(0, 0, -1))
-		expectVectorNear(part.CFrame.YVector, Vector3.new(0, 1, 0))
+		expectSameRegion(region, part)
+
+		for _ = 1, 3 do
+			t.expect(doFlip(part, topPoint, true)).toBe(part)
+		end
+		expectVectorNear(part.Size, Vector3.new(1, 2, 3))
+		expectCFrameNear(part.CFrame, originalCFrame)
 
 		part:Destroy()
 	end)
 
-	t.test("flipping a brick about Right swaps the Y/Z dimensions in place", function()
+	t.test("clockwise then counterclockwise restores a brick", function()
 		local part = Instance.new("Part")
 		part.Anchored = true
 		part.Size = Vector3.new(1, 2, 3)
-		part.CFrame = CFrame.new(10, 20, 30)
+		part.CFrame = CFrame.new(10, 20, 30) * CFrame.Angles(0.3, 0.5, 0.9)
 		part.Parent = workspace
+		local originalCFrame = part.CFrame
 
-		doFlip(part, part.Position + Vector3.new(0.5, 0, 0), Enum.NormalId.Right)
-
-		expectVectorNear(part.Size, Vector3.new(1, 3, 2))
-		expectVectorNear(part.Position, Vector3.new(10, 20, 30))
-		expectVectorNear(part.CFrame.XVector, Vector3.new(1, 0, 0))
-		-- Quarter turn about +X: +Y ends up pointing at +Z
-		expectVectorNear(part.CFrame.YVector, Vector3.new(0, 0, 1))
+		-- The region doesn't move, so the same world point clicks the same
+		-- world face both times; the CCW turn undoes the CW turn
+		local clickPoint = originalCFrame:PointToWorldSpace(Vector3.new(0, 1, 0))
+		doFlip(part, clickPoint, true)
+		doFlip(part, clickPoint, false)
+		expectVectorNear(part.Size, Vector3.new(1, 2, 3))
+		expectCFrameNear(part.CFrame, originalCFrame)
 
 		part:Destroy()
 	end)
 
-	t.test("flipping a brick about Top cycles the side surfaces", function()
+	t.test("brick flip preserves the multiset of surfaces and restores after four", function()
 		local part = Instance.new("Part")
 		part.Anchored = true
 		part.Size = Vector3.new(2, 2, 2)
@@ -56,68 +90,223 @@ return function(t: TestTypes.TestContext)
 		part.LeftSurface = Enum.SurfaceType.Inlet
 		part.Parent = workspace
 
-		doFlip(part, part.Position + Vector3.new(0, 1, 0), Enum.NormalId.Top)
+		local function surfaceCounts(): {[Enum.SurfaceType]: number}
+			local counts = {}
+			for _, prop in {"TopSurface", "BottomSurface", "FrontSurface", "BackSurface", "LeftSurface", "RightSurface"} do
+				local surface = (part :: any)[prop] :: Enum.SurfaceType
+				counts[surface] = (counts[surface] or 0) + 1
+			end
+			return counts
+		end
+		local before = surfaceCounts()
+		local topBefore = part.TopSurface
+		local bottomBefore = part.BottomSurface
 
-		t.expect(part.FrontSurface).toBe(Enum.SurfaceType.Inlet)
-		t.expect(part.RightSurface).toBe(Enum.SurfaceType.Weld)
-		t.expect(part.BackSurface).toBe(Enum.SurfaceType.Glue)
-		t.expect(part.LeftSurface).toBe(Enum.SurfaceType.Studs)
+		local topPoint = part.Position + Vector3.new(0, 1, 0)
+		doFlip(part, topPoint, true)
+		t.expect(surfaceCounts()).toEqual(before)
+		-- Top axis flip must not disturb top/bottom
+		t.expect(part.TopSurface).toBe(topBefore)
+		t.expect(part.BottomSurface).toBe(bottomBefore)
+
+		for _ = 1, 3 do
+			doFlip(part, topPoint, true)
+		end
+		t.expect(part.FrontSurface).toBe(Enum.SurfaceType.Weld)
+		t.expect(part.RightSurface).toBe(Enum.SurfaceType.Glue)
+		t.expect(part.BackSurface).toBe(Enum.SurfaceType.Studs)
+		t.expect(part.LeftSurface).toBe(Enum.SurfaceType.Inlet)
 
 		part:Destroy()
 	end)
 
-	t.test("flipping a wedge exchanges its Y/Z dimensions in place", function()
+	t.test("wedge converts to a mesh and back over a four flip cycle", function()
 		local wedge = Instance.new("WedgePart")
 		wedge.Anchored = true
-		wedge.Size = Vector3.new(1, 2, 3)
-		wedge.CFrame = CFrame.new(5, 6, 7)
+		wedge.Size = Vector3.new(2, 3, 4)
+		wedge.CFrame = CFrame.new(5, 10, 15) * CFrame.Angles(0.4, 0.8, 1.2)
 		wedge.Parent = workspace
+		local originalCFrame = wedge.CFrame
+		local region = regionPoints(wedge)
 
-		doFlip(wedge, wedge.Position, Enum.NormalId.Top)
+		-- Click the +X side face; a quarter turn about X is never a wedge
+		-- symmetry, so every intermediate state needs a mesh
+		local function sideClick(part: BasePart): Vector3
+			local state = identifyPart(part)
+			assert(state)
+			return state.ShapeCFrame:PointToWorldSpace(Vector3.new(state.ShapeSize.X / 2, 0, 0))
+		end
 
-		expectVectorNear(wedge.Size, Vector3.new(1, 3, 2))
-		expectVectorNear(wedge.Position, Vector3.new(5, 6, 7))
-		-- New top is the old front, new back is the old top
-		expectVectorNear(wedge.CFrame.YVector, Vector3.new(0, 0, -1))
-		expectVectorNear(wedge.CFrame.ZVector, Vector3.new(0, -1, 0))
+		local current: BasePart = wedge
+		for step = 1, 3 do
+			local result = doFlip(current, sideClick(current), true)
+			if not result then
+				t.fail("Flip step " .. step .. " failed")
+			end
+			assert(result)
+			current = result
+			t.expect(current:IsA("MeshPart")).toBeTruthy()
+			t.expect(current.Parent).toBe(workspace)
+			local state = identifyPart(current)
+			assert(state, "mesh state must be identifiable")
+			t.expect(state.Shape).toBe("Wedge")
+			t.expect(state.IsMeshRepresentation).toBeTruthy()
+			expectVectorNear(state.ShapeSize, Vector3.new(2, 3, 4))
+			expectSameRegion(region, current)
+		end
+		t.expect(wedge.Parent).toBe(nil) -- replaced, not destroyed
 
+		-- Fourth flip returns to the primitive representation
+		local result = doFlip(current, sideClick(current), true)
+		assert(result)
+		t.expect(result:IsA("WedgePart")).toBeTruthy()
+		expectVectorNear(result.Size, Vector3.new(2, 3, 4))
+		expectCFrameNear(result.CFrame, originalCFrame)
+		expectSameRegion(region, result)
+
+		result:Destroy()
 		wedge:Destroy()
 	end)
 
-	t.test("flipping a wedge twice returns it to the original orientation", function()
+	t.test("mesh replacement preserves visual properties and children", function()
 		local wedge = Instance.new("WedgePart")
 		wedge.Anchored = true
-		wedge.Size = Vector3.new(1, 2, 3)
-		wedge.CFrame = CFrame.new(5, 6, 7) * CFrame.Angles(0.3, 0.6, 0.9)
+		wedge.Size = Vector3.new(2, 3, 4)
+		wedge.CFrame = CFrame.new(5, 10, 15)
+		wedge.Material = Enum.Material.DiamondPlate
+		wedge.Color = Color3.fromRGB(50, 100, 150)
+		wedge.Transparency = 0.25
+		wedge.Name = "MyWedge"
+		local marker = Instance.new("Attachment")
+		marker.Name = "Marker"
+		marker.Parent = wedge
 		wedge.Parent = workspace
-		local originalCF = wedge.CFrame
 
-		doFlip(wedge, wedge.Position, Enum.NormalId.Top)
-		doFlip(wedge, wedge.Position, Enum.NormalId.Top)
+		local result = doFlip(wedge, wedge.CFrame:PointToWorldSpace(Vector3.new(1, 0, 0)), true)
+		assert(result)
+		t.expect(result:IsA("MeshPart")).toBeTruthy()
+		t.expect(result.Material).toBe(Enum.Material.DiamondPlate)
+		t.expect(result.Color).toBe(Color3.fromRGB(50, 100, 150))
+		t.expect(math.abs(result.Transparency - 0.25) < 0.001).toBeTruthy()
+		t.expect(result.Name).toBe("MyWedge")
+		t.expect(result:FindFirstChild("Marker")).toBeTruthy()
 
-		expectVectorNear(wedge.Size, Vector3.new(1, 2, 3))
-		expectVectorNear(wedge.CFrame.XVector, originalCF.XVector)
-		expectVectorNear(wedge.CFrame.YVector, originalCF.YVector)
-		expectVectorNear(wedge.CFrame.ZVector, originalCF.ZVector)
-
+		result:Destroy()
 		wedge:Destroy()
 	end)
 
-	t.test("flipping a ball rotates a half turn about the click axis", function()
+	t.test("corner wedge cycles through meshes and back", function()
+		local cornerWedge = Instance.new("CornerWedgePart")
+		cornerWedge.Anchored = true
+		cornerWedge.Size = Vector3.new(2, 3, 4)
+		cornerWedge.CFrame = CFrame.new(-5, 8, 3)
+		cornerWedge.Parent = workspace
+		local originalCFrame = cornerWedge.CFrame
+		local region = regionPoints(cornerWedge)
+
+		local topPoint = cornerWedge.Position + Vector3.new(0, 1.5, 0)
+		local current: BasePart = cornerWedge
+		for _ = 1, 3 do
+			local result = doFlip(current, topPoint, true)
+			assert(result)
+			current = result
+			t.expect(current:IsA("MeshPart")).toBeTruthy()
+			expectSameRegion(region, current)
+		end
+		local result = doFlip(current, topPoint, true)
+		assert(result)
+		t.expect(result:IsA("CornerWedgePart")).toBeTruthy()
+		expectCFrameNear(result.CFrame, originalCFrame)
+		expectVectorNear(result.Size, Vector3.new(2, 3, 4))
+
+		result:Destroy()
+		cornerWedge:Destroy()
+	end)
+
+	t.test("cylinder stays primitive for axis turns, meshes otherwise", function()
+		local cylinder = Instance.new("Part")
+		cylinder.Shape = Enum.PartType.Cylinder
+		cylinder.Anchored = true
+		cylinder.Size = Vector3.new(6, 4, 4)
+		cylinder.CFrame = CFrame.new(7, 9, 11)
+		cylinder.Parent = workspace
+		local region = regionPoints(cylinder)
+
+		-- Click the +X cap: quarter turn about the axis is a symmetry
+		local capPoint = cylinder.Position + Vector3.new(3, 0, 0)
+		local result = doFlip(cylinder, capPoint, true)
+		t.expect(result).toBe(cylinder) -- in place
+		t.expect(cylinder.Shape).toBe(Enum.PartType.Cylinder)
+		expectSameRegion(region, cylinder)
+
+		-- Click the top of the barrel: a quarter turn about a cross axis needs
+		-- a mesh, but a half turn is the end-over-end flip which is a cylinder
+		-- symmetry again. So four clicks of the same world face alternate
+		-- mesh, primitive, mesh, primitive.
+		local topPoint = cylinder.Position + Vector3.new(0, 2, 0)
+		local current: BasePart = cylinder
+		local expectMesh = {true, false, true, false}
+		for step = 1, 4 do
+			local next_ = doFlip(current, topPoint, true)
+			assert(next_, "flip step " .. step .. " failed")
+			current = next_
+			if current:IsA("MeshPart") ~= expectMesh[step] then
+				t.fail(string.format("Step %d: expected mesh=%s, got %s",
+					step, tostring(expectMesh[step]), current.ClassName))
+			end
+			expectSameRegion(region, current)
+		end
+		t.expect((current :: Part).Shape).toBe(Enum.PartType.Cylinder)
+
+		current:Destroy()
+		cylinder:Destroy()
+	end)
+
+	t.test("ball always rotates in place", function()
 		local ball = Instance.new("Part")
 		ball.Shape = Enum.PartType.Ball
 		ball.Anchored = true
 		ball.Size = Vector3.new(4, 4, 4)
 		ball.CFrame = CFrame.new(1, 2, 3)
 		ball.Parent = workspace
+		local originalCFrame = ball.CFrame
 
-		doFlip(ball, ball.Position + Vector3.new(2, 0, 0), Enum.NormalId.Right)
-
-		expectVectorNear(ball.Position, Vector3.new(1, 2, 3))
-		expectVectorNear(ball.CFrame.XVector, Vector3.new(1, 0, 0))
-		-- Half turn about +X: +Y ends up pointing at -Y
-		expectVectorNear(ball.CFrame.YVector, Vector3.new(0, -1, 0))
+		local topPoint = ball.Position + Vector3.new(0, 2, 0)
+		for _ = 1, 4 do
+			local result = doFlip(ball, topPoint, true)
+			t.expect(result).toBe(ball)
+			t.expect(ball.Shape).toBe(Enum.PartType.Ball)
+			expectVectorNear(ball.Position, Vector3.new(1, 2, 3))
+		end
+		expectCFrameNear(ball.CFrame, originalCFrame)
 
 		ball:Destroy()
+	end)
+
+	t.test("SpecialMesh parts only flip within their primitive's symmetries", function()
+		-- A SpecialMesh wedge can't be converted to a MeshPart without losing
+		-- its mesh, and no quarter turn is a wedge symmetry, so: no-op
+		local part = Instance.new("Part")
+		part.Anchored = true
+		part.Size = Vector3.new(2, 3, 4)
+		part.CFrame = CFrame.new(4, 5, 6)
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = Enum.MeshType.Wedge
+		mesh.Parent = part
+		part.Parent = workspace
+		local originalCFrame = part.CFrame
+
+		local result = doFlip(part, part.Position + Vector3.new(1, 0, 0), true)
+		t.expect(result).toBe(nil)
+		expectCFrameNear(part.CFrame, originalCFrame)
+		expectVectorNear(part.Size, Vector3.new(2, 3, 4))
+
+		-- But a SpecialMesh brick flips fine (bricks never need meshes)
+		mesh.MeshType = Enum.MeshType.Brick
+		local brickResult = doFlip(part, part.Position + Vector3.new(0, 1.5, 0), true)
+		t.expect(brickResult).toBe(part)
+		expectVectorNear(part.Size, Vector3.new(4, 3, 2))
+
+		part:Destroy()
 	end)
 end

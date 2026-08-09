@@ -30,14 +30,23 @@ Tools are managed via Aftman (`aftman.toml`): Rojo 7.6.1. Dependencies are manag
 MaterialFlip follows the modern GeomTools three-layer plugin architecture (see GapFill / ResizeAlign). The tool itself is a one-shot effect on click with hover feedback, so there is no multi-step session state.
 
 1. **Functionality layer** — Targeting, hover feedback, the flip operation.
-   - `src/createMaterialFlipSession.lua` — Session lifecycle: raycast-based targeting (closest box face), hover highlight via a `Highlight` instance in CoreGui, click-to-flip via UserInputService.
-   - `src/getShape.lua` — Classifies a part's shape (Brick, Wedge, CornerWedge, Round, Terrain), honoring SpecialMesh children.
-   - `src/canFlip.lua` — Whether a part is flippable (unlocked Brick/Wedge/Round).
-   - `src/doFlip.lua` — The one-shot flip operation: rotates CFrame, swaps dimensions and surface types per shape, as a single undoable recording.
+   - `src/Orientation.lua` — The 24-element octahedral rotation group as signed permutation matrices, with stable integer ids, composition/inverse tables, quarter turn constructors, and size permutation helpers.
+   - `src/ShapeData.lua` — Per-shape symmetry groups H (Brick/Ball: 24, Cylinder: 8, Wedge: 2, CornerWedge: 1) and orientation class (right coset) bookkeeping. Class count = 24/|H| = number of distinct baked meshes a shape needs.
+   - `src/getShape.lua` — Classifies a part's primitive shape (Brick, Wedge, CornerWedge, Cylinder, Ball, Terrain), honoring SpecialMesh children.
+   - `src/identifyPart.lua` — Reverse lookup of a part's flip state (shape, material orientation m, shape frame P, shape size). Primitives are always m = identity; MeshPart representations carry (shape, m) in attributes (prototype; production will look up published assets by MeshId).
+   - `src/canFlip.lua` — Whether a part is flippable (identifiable and not locked).
+   - `src/doFlip.lua` — The flip: a quarter turn about the clicked bounding box face (clockwise or counterclockwise per settings). Computes m' = r * m, then represents m' with the primitive when m' is in H (always preferred), else a MeshPart with the rotation baked into its geometry. Updates in place when the representation class is unchanged, otherwise swaps the instance (preserving properties, children, selection, and undo).
+   - `src/buildShapeMesh.lua` — EditableMesh builders for Wedge/CornerWedge/Cylinder with a baked orientation. Geometry validated against the real primitives. In-memory meshes do NOT survive place save; production needs published mesh assets.
+   - `src/copyPartProps.lua` — Property copying for representation swaps.
+   - `src/createMaterialFlipSession.lua` — Session lifecycle: raycast targeting, hover highlight via a `Highlight` instance in CoreGui, click-to-flip via UserInputService. Face selection uses the closest bounding box face in the shape's frame (not the hit surface), which matters for curved and mesh-represented parts.
    - `src/TestTypes.lua` — Types definition of the testing framework, spec files take in a type from here.
 
+**Key rendering facts (verified empirically):**
+- Built-in materials on MeshParts ignore UVs entirely; they are a triplanar projection in the part's local frame. Baking a rotation into mesh geometry (with compensating CFrame) is what rotates the material.
+- Primitives use special per-face material mappings on sloped faces (e.g. a wedge primitive runs planks up the slope) which triplanar MeshParts cannot reproduce, so the primitive <-> mesh transition is visible on sloped faces. Unavoidable; primitives are preferred wherever possible.
+
 2. **Settings layer** — Persistent configuration that the functionality layer reads.
-   - `src/Settings.lua` — Reads/writes plugin settings (key: `"materialFlipState"`). Currently only `RotateDirection` (Clockwise / CounterClockwise; not yet consumed by the flip logic) plus the standard window state.
+   - `src/Settings.lua` — Reads/writes plugin settings (key: `"materialFlipState"`). `RotateDirection` (Clockwise / CounterClockwise) selects the quarter turn direction, plus the standard window state.
 
 3. **UI layer** — React components that modify settings and trigger operations.
    - `src/MaterialFlipGui.lua` — Main settings panel (React): rotate direction chips and a close button.
