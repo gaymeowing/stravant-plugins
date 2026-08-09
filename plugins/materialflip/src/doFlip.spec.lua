@@ -642,6 +642,7 @@ return function(t: TestTypes.TestContext)
 		local foreign = buildShapeMesh("Wedge", Orientation.Identity, Vector3.new(2, 3, 4))
 		foreign.Anchored = true
 		foreign.CFrame = CFrame.new(5, 60, 5)
+		foreign.Color = Color3.fromRGB(120, 40, 200)
 		foreign.Parent = workspace
 		local before = foreign.CFrame
 
@@ -652,6 +653,10 @@ return function(t: TestTypes.TestContext)
 		t.expect(result == foreign).toBeFalsy()
 		t.expect(result.Parent).toBe(workspace)
 		t.expect(foreign.Parent).toBe(nil) -- replaced, not destroyed
+		-- Colors survive: the inputs are whitened during the union (the CSG
+		-- API bakes input colors into vertex colors) and restored after
+		t.expect(result.Color).toBe(Color3.fromRGB(120, 40, 200))
+		t.expect(foreign.Color).toBe(Color3.fromRGB(120, 40, 200))
 
 		-- Frame rotated a quarter turn about Y at the same position: the
 		-- geometry stays put while the material frame turns

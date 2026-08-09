@@ -186,9 +186,16 @@ local function doFlip(part: BasePart, worldPoint: Vector3, worldNormal: Vector3,
 		local helper = Instance.new("Part")
 		helper.Size = Vector3.new(0.05, 0.05, 0.05)
 		helper.CFrame = newCFrame
+		-- The CSG API bakes the input part colors into the result's vertex
+		-- colors, so any non-white color would darken the part a bit more on
+		-- every flip: union with pure white inputs and restore afterward
+		helper.Color = Color3.new(1, 1, 1)
+		local savedColor = part.Color
+		part.Color = Color3.new(1, 1, 1)
 		local ok, unionResults = pcall(function()
 			return GeometryService:UnionAsync(helper, {part})
 		end)
+		part.Color = savedColor
 		helper:Destroy()
 		local replacement = if ok and type(unionResults) == "table" and unionResults[1]
 			then unionResults[1] :: BasePart
