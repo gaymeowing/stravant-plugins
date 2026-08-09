@@ -122,6 +122,20 @@ local function OptionsPanel(props: {
 				HelpRichText = "Adjust the PivotOffset so the part's pivot stays at the same world space location instead of rotating along with the material.",
 			}),
 		}),
+		TargetLocked = e(HelpGui.WithHelpIcon, {
+			LayoutOrder = 4,
+			Subject = e(Checkbox, {
+				Label = "Target Locked",
+				Checked = props.Settings.TargetLocked,
+				Changed = function(newValue: boolean)
+					props.Settings.TargetLocked = newValue
+					props.UpdatedSettings()
+				end,
+			}),
+			Help = e(HelpGui.BasicTooltip, {
+				HelpRichText = "Allow hovering and flipping Locked parts.",
+			}),
+		}),
 	})
 end
 

@@ -39,8 +39,11 @@ return function(t: TestTypes.TestContext)
 		local locked = Instance.new("Part")
 		locked.Locked = true
 		t.expect(canFlip(locked)).toBeFalsy()
+		-- Unless the Target Locked setting allows it
+		t.expect(canFlip(locked, true)).toBeTruthy()
 		locked:Destroy()
 
 		t.expect(canFlip(workspace.Terrain)).toBeFalsy()
+		t.expect(canFlip(workspace.Terrain, true)).toBeFalsy()
 	end)
 end

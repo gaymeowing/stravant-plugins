@@ -259,7 +259,7 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 
 	local function updateHover()
 		local hit, at, normal = getTarget()
-		if hit and canFlip(hit) then
+		if hit and canFlip(hit, activeSettings.TargetLocked) then
 			setHoverPart(hit)
 			updateRotationArc(at, normal)
 		else
@@ -274,7 +274,7 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
 			local hit, at, normal = getTarget()
-			if hit and canFlip(hit) then
+			if hit and canFlip(hit, activeSettings.TargetLocked) then
 				local result = doFlip(hit, at, normal, flipOptions())
 				if result then
 					setHoverPart(result)
@@ -318,7 +318,7 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 			mHoverPart = nil
 		end,
 		TestClick = function(part: BasePart, point: Vector3, normal: Vector3): BasePart?
-			if canFlip(part) then
+			if canFlip(part, activeSettings.TargetLocked) then
 				return doFlip(part, point, normal, flipOptions())
 			end
 			return nil

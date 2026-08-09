@@ -143,4 +143,26 @@ return function(t: TestTypes.TestContext)
 
 		session.Destroy()
 	end)
+
+	t.test("Target Locked allows flipping locked parts", function()
+		local settings = TestHelpers.makeTestSettings()
+		settings.TargetLocked = true
+		local session = createMaterialFlipSession(settings)
+
+		local locked = Instance.new("Part")
+		locked.Anchored = true
+		locked.Locked = true
+		locked.Size = Vector3.new(1, 2, 3)
+		locked.Parent = workspace
+		local result = session.TestClick(locked, locked.Position + Vector3.new(0, 1, 0), Vector3.yAxis)
+		if result ~= locked then
+			t.fail("Expected the locked part to flip")
+		end
+		if (locked.Size - Vector3.new(3, 2, 1)).Magnitude > 0.001 then
+			t.fail(`Expected locked part to be flipped, size is {locked.Size}`)
+		end
+		locked:Destroy()
+
+		session.Destroy()
+	end)
 end

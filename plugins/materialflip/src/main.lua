@@ -60,7 +60,7 @@ return function(plugin: Plugin, panel: DockWidgetPluginGui, buttonClicked: Signa
 		if state and state.ApproximatedAsBox then
 			return "This part is not a primitive shape. It will be rotated as if it were a box.", true
 		end
-		return "Hover over a part to rotate its material.", false
+		return "Hover over a part and click to rotate its material.", false
 	end
 
 	local function updateUI()

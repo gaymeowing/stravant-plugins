@@ -12,6 +12,7 @@ export type MaterialFlipSettings = PluginGuiTypes.PluginGuiSettings & {
 	PreserveAttachments: boolean,
 	PreserveDecals: boolean,
 	PreservePivot: boolean,
+	TargetLocked: boolean,
 }
 
 local function loadSettings(plugin: Plugin): MaterialFlipSettings
@@ -35,6 +36,7 @@ local function loadSettings(plugin: Plugin): MaterialFlipSettings
 		PreserveAttachments = if raw.PreserveAttachments ~= nil then raw.PreserveAttachments else true,
 		PreserveDecals = if raw.PreserveDecals ~= nil then raw.PreserveDecals else false,
 		PreservePivot = if raw.PreservePivot ~= nil then raw.PreservePivot else false,
+		TargetLocked = if raw.TargetLocked ~= nil then raw.TargetLocked else false,
 	}
 end
 local function saveSettings(plugin: Plugin, settings: MaterialFlipSettings)
@@ -53,6 +55,7 @@ local function saveSettings(plugin: Plugin, settings: MaterialFlipSettings)
 		PreserveAttachments = settings.PreserveAttachments,
 		PreserveDecals = settings.PreserveDecals,
 		PreservePivot = settings.PreservePivot,
+		TargetLocked = settings.TargetLocked,
 	})
 end
 

@@ -15,6 +15,7 @@ local function makeTestSettings(): Settings.MaterialFlipSettings
 		PreserveAttachments = true,
 		PreserveDecals = false,
 		PreservePivot = false,
+		TargetLocked = false,
 	}
 end
 

@@ -26,7 +26,7 @@ local function mountAndUnmount(guiState: "inactive" | "active", panelized: boole
 			UpdatedSettings = function() end,
 			HandleAction = function() end,
 			Panelized = panelized,
-			StatusText = "Hover over a part to rotate its material.",
+			StatusText = "Hover over a part and click to rotate its material.",
 			StatusIsWarning = false,
 		}))
 	end)
