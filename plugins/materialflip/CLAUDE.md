@@ -48,7 +48,7 @@ MaterialFlip follows the modern GeomTools three-layer plugin architecture (see G
 - Primitives use special per-face material mappings on sloped faces (e.g. a wedge primitive runs planks up the slope) which triplanar MeshParts cannot reproduce, so the primitive <-> mesh transition is visible on sloped faces. Unavoidable; primitives are preferred wherever possible.
 
 2. **Settings layer** — Persistent configuration that the functionality layer reads.
-   - `src/Settings.lua` — Reads/writes plugin settings (key: `"materialFlipState"`). `RotateDirection` (Clockwise / CounterClockwise) selects the quarter turn direction, plus the standard window state.
+   - `src/Settings.lua` — Reads/writes plugin settings (key: `"materialFlipState"`). `RotateDirection` (Clockwise / CounterClockwise) selects the quarter turn direction; `PreserveAttachments` (default true) keeps attachments under the part at their world pose (nested chains handled parents-first via WorldCFrame restore); `PreserveDecals` (default false) reassigns Decal/Texture Face to stay on the same world face. Plus the standard window state.
 
 3. **UI layer** — React components that modify settings and trigger operations.
    - `src/MaterialFlipGui.lua` — Main settings panel (React): rotate direction chips, a status box (hover info; warns when a non-primitive part will be flipped with box behavior), and a close button.

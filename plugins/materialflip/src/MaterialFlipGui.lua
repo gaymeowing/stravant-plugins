@@ -10,6 +10,7 @@ local SubPanel = require("./PluginGui/SubPanel")
 local PluginGui = require("./PluginGui/PluginGui")
 local OperationButton = require("./PluginGui/OperationButton")
 local ChipForToggle = require("./PluginGui/ChipForToggle")
+local Checkbox = require("./PluginGui/Checkbox")
 local Settings = require("./Settings")
 local PluginGuiTypes = require("./PluginGui/Types")
 
@@ -64,6 +65,47 @@ local function RotateDirectionPanel(props: {
 			}),
 			Help = e(HelpGui.BasicTooltip, {
 				HelpRichText = "Which direction the material rotates around the clicked face.",
+			}),
+		}),
+	})
+end
+
+local function OptionsPanel(props: {
+	Settings: Settings.MaterialFlipSettings,
+	UpdatedSettings: () -> (),
+	LayoutOrder: number?,
+})
+	return e(SubPanel, {
+		Title = "Options",
+		LayoutOrder = props.LayoutOrder,
+		Padding = UDim.new(0, 4),
+	}, {
+		PreserveAttachments = e(HelpGui.WithHelpIcon, {
+			LayoutOrder = 1,
+			Subject = e(Checkbox, {
+				Label = "Preserve Attachments",
+				Checked = props.Settings.PreserveAttachments,
+				Changed = function(newValue: boolean)
+					props.Settings.PreserveAttachments = newValue
+					props.UpdatedSettings()
+				end,
+			}),
+			Help = e(HelpGui.BasicTooltip, {
+				HelpRichText = "Keep Attachments under the part (including nested ones and whatever hangs off them) at their current world position instead of rotating along with the material.",
+			}),
+		}),
+		PreserveDecals = e(HelpGui.WithHelpIcon, {
+			LayoutOrder = 2,
+			Subject = e(Checkbox, {
+				Label = "Preserve Decals/Textures",
+				Checked = props.Settings.PreserveDecals,
+				Changed = function(newValue: boolean)
+					props.Settings.PreserveDecals = newValue
+					props.UpdatedSettings()
+				end,
+			}),
+			Help = e(HelpGui.BasicTooltip, {
+				HelpRichText = "Reassign the Face of Decals and Textures so they stay where they are instead of rotating along with the material.",
 			}),
 		}),
 	})
@@ -149,6 +191,11 @@ local function MaterialFlipGui(props: {
 		},
 	}, {
 		RotateDirectionPanel = e(RotateDirectionPanel, {
+			Settings = currentSettings,
+			UpdatedSettings = props.UpdatedSettings,
+			LayoutOrder = nextOrder(),
+		}),
+		OptionsPanel = e(OptionsPanel, {
 			Settings = currentSettings,
 			UpdatedSettings = props.UpdatedSettings,
 			LayoutOrder = nextOrder(),

@@ -23,6 +23,15 @@ local pickRotationFace = require("./pickRotationFace")
 local getMeshRepresentation = require("./getMeshRepresentation")
 local copyPartProps = require("./copyPartProps")
 
+export type FlipOptions = {
+	Clockwise: boolean,
+	-- Keep Attachments under the part at their world pose instead of
+	-- rotating along with the material
+	PreserveAttachments: boolean,
+	-- Reassign Decal/Texture Face so they stay on the same world face
+	PreserveDecals: boolean,
+}
+
 local kSurfaceProps: {[Enum.NormalId]: string} = {
 	[Enum.NormalId.Top] = "TopSurface",
 	[Enum.NormalId.Bottom] = "BottomSurface",
@@ -60,9 +69,27 @@ local function permuteSurfaces(part: BasePart, newM: Orientation.OrientationId)
 	end
 end
 
+-- Attachments under the part, parents before children, so restoring a
+-- parent's world pose doesn't disturb an already restored child. Only
+-- chains of Attachments matter: an attachment inside e.g. a child part is
+-- anchored to that part, which doesn't move.
+local function collectAttachmentPoses(part: BasePart): {{attachment: Attachment, worldCFrame: CFrame}}
+	local poses = {}
+	local function collect(instance: Instance)
+		for _, child in instance:GetChildren() do
+			if child:IsA("Attachment") then
+				table.insert(poses, {attachment = child, worldCFrame = child.WorldCFrame})
+				collect(child)
+			end
+		end
+	end
+	collect(part)
+	return poses
+end
+
 -- Returns the part representing the result (the same part if updated in
 -- place), or nil if the part isn't flippable or the flip isn't representable.
-local function doFlip(part: BasePart, worldPoint: Vector3, worldNormal: Vector3, clockwise: boolean): BasePart?
+local function doFlip(part: BasePart, worldPoint: Vector3, worldNormal: Vector3, options: FlipOptions): BasePart?
 	local state = identifyPart(part)
 	if not state then
 		return nil
@@ -70,7 +97,7 @@ local function doFlip(part: BasePart, worldPoint: Vector3, worldNormal: Vector3,
 	assert(state)
 
 	local face = pickRotationFace(state, worldPoint, worldNormal)
-	local r = Orientation.quarterTurnAbout(face, clockwise)
+	local r = Orientation.quarterTurnAbout(face, options.Clockwise)
 	local newM = Orientation.compose(r, state.Orientation)
 
 	local targetClass = ShapeData.classRepOf(state.Shape, newM)
@@ -83,6 +110,18 @@ local function doFlip(part: BasePart, worldPoint: Vector3, worldNormal: Vector3,
 	end
 
 	local recording = ChangeHistoryService:TryBeginRecording("MaterialFlip", "Material Flip")
+
+	-- Snapshots for content preservation, taken before any mutation
+	local attachmentPoses = if options.PreserveAttachments then collectAttachmentPoses(part) else nil
+	local faceInstances: {FaceInstance}? = nil
+	if options.PreserveDecals then
+		faceInstances = {}
+		for _, child in part:GetChildren() do
+			if child:IsA("FaceInstance") then
+				table.insert(faceInstances :: {FaceInstance}, child)
+			end
+		end
+	end
 
 	local newCFrame = state.ShapeCFrame * Orientation.getCFrame(newM)
 	local newSize = Orientation.permuteSize(Orientation.invert(newM), state.ShapeSize)
@@ -145,6 +184,21 @@ local function doFlip(part: BasePart, worldPoint: Vector3, worldNormal: Vector3,
 		-- Not :Destroy() so that undo can restore the old part
 		part.Parent = nil
 		result = replacement
+	end
+
+	-- Restore preserved content now that the part has its new frame
+	if attachmentPoses then
+		for _, entry in attachmentPoses do
+			entry.attachment.WorldCFrame = entry.worldCFrame
+		end
+	end
+	if faceInstances then
+		-- Move each Decal/Texture to the local face now pointing in the world
+		-- direction its old face pointed in: q = newM^-1 * oldM
+		local q = Orientation.compose(Orientation.invert(newM), state.Orientation)
+		for _, faceInstance in faceInstances do
+			faceInstance.Face = Orientation.rotateNormalId(q, faceInstance.Face)
+		end
 	end
 
 	if recording then

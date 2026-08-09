@@ -62,6 +62,14 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 	-- the first flip doesn't flicker (one-shot per plugin lifetime)
 	preloadMeshRepresentations()
 
+	local function flipOptions(): doFlip.FlipOptions
+		return {
+			Clockwise = activeSettings.RotateDirection == "Clockwise",
+			PreserveAttachments = activeSettings.PreserveAttachments,
+			PreserveDecals = activeSettings.PreserveDecals,
+		}
+	end
+
 	local changeSignal = Signal.new()
 
 	local mHoverPart: BasePart? = nil
@@ -259,7 +267,7 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
 			local hit, at, normal = getTarget()
 			if hit and canFlip(hit) then
-				local result = doFlip(hit, at, normal, activeSettings.RotateDirection == "Clockwise")
+				local result = doFlip(hit, at, normal, flipOptions())
 				if result then
 					setHoverPart(result)
 				end
@@ -303,7 +311,7 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 		end,
 		TestClick = function(part: BasePart, point: Vector3, normal: Vector3): BasePart?
 			if canFlip(part) then
-				return doFlip(part, point, normal, activeSettings.RotateDirection == "Clockwise")
+				return doFlip(part, point, normal, flipOptions())
 			end
 			return nil
 		end,

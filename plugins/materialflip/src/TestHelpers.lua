@@ -12,6 +12,8 @@ local function makeTestSettings(): Settings.MaterialFlipSettings
 		HaveHelp = true,
 
 		RotateDirection = "Clockwise" :: Settings.RotateDirection,
+		PreserveAttachments = true,
+		PreserveDecals = false,
 	}
 end
 
