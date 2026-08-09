@@ -23,6 +23,7 @@ local identifyPart = require("./identifyPart")
 local pickRotationFace = require("./pickRotationFace")
 local getMeshRepresentation = require("./getMeshRepresentation")
 local copyPartProps = require("./copyPartProps")
+local warmRenderParts = require("./warmRenderParts")
 
 export type FlipOptions = {
 	Clockwise: boolean,
@@ -213,6 +214,17 @@ local function doFlip(part: BasePart, worldPoint: Vector3, worldNormal: Vector3,
 			return nil
 		end
 		assert(unioned)
+
+		-- Warm the new mesh into graphics memory before showing it, otherwise
+		-- the first frame renders with the old resident mesh against the new
+		-- CFrame - a one frame wrong-orientation flicker. A throwaway clone
+		-- shares the mesh resource, keeping the real result pristine.
+		local warmClone = unioned:Clone()
+		if warmClone then
+			warmRenderParts({warmClone})
+			warmClone:Destroy()
+		end
+
 		if part:IsA("MeshPart") and unioned:IsA("MeshPart") then
 			-- Apply the rotated mesh back onto the live part in place: no
 			-- instance swap at all (UnionAsync returns a MeshPart when a
