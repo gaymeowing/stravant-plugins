@@ -25,7 +25,7 @@ export type MaterialFlipSession = {
 	TestSetHover: (part: BasePart?, point: Vector3?, normal: Vector3?) -> (),
 }
 
-local kIndicatorColor = Color3.fromRGB(255, 140, 0)
+local kIndicatorColor = Color3.fromRGB(255, 0, 0)
 
 -- Raycast the mouse into the scene, returning the hit part, hit point, and
 -- hit normal. Which bounding box face the click acts on is determined by
