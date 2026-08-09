@@ -392,6 +392,51 @@ return function(t: TestTypes.TestContext)
 		part:Destroy()
 	end)
 
+	-- The empirically determined image axes of each face (U = image right,
+	-- V = image down), used to express the appearance invariant: the world
+	-- direction of the displayed image's right edge must not change
+	local kFaceUV: {[Enum.NormalId]: {U: Vector3, V: Vector3}} = {
+		[Enum.NormalId.Front] = {U = Vector3.new(-1, 0, 0), V = Vector3.new(0, -1, 0)},
+		[Enum.NormalId.Back] = {U = Vector3.new(1, 0, 0), V = Vector3.new(0, -1, 0)},
+		[Enum.NormalId.Right] = {U = Vector3.new(0, 0, -1), V = Vector3.new(0, -1, 0)},
+		[Enum.NormalId.Left] = {U = Vector3.new(0, 0, 1), V = Vector3.new(0, -1, 0)},
+		[Enum.NormalId.Top] = {U = Vector3.new(-1, 0, 0), V = Vector3.new(0, 0, -1)},
+		[Enum.NormalId.Bottom] = {U = Vector3.new(1, 0, 0), V = Vector3.new(0, 0, -1)},
+	}
+	local function worldImageRight(part: BasePart, faceInstance: FaceInstance): Vector3
+		local uv = kFaceUV[faceInstance.Face]
+		local rad = math.rad((faceInstance :: any).Rotation)
+		return part.CFrame:VectorToWorldSpace(uv.U * math.cos(rad) + uv.V * math.sin(rad))
+	end
+
+	t.test("decal rotation compensates when flipping about the decal's own face", function()
+		local withDecals: doFlip.FlipOptions = {
+			Clockwise = true,
+			PreserveAttachments = true,
+			PreserveDecals = true,
+			PreservePivot = false,
+		}
+		local part = Instance.new("Part")
+		part.Anchored = true
+		part.Size = Vector3.new(3, 3, 3)
+		part.CFrame = CFrame.new(2, 40, -9)
+		local decal = Instance.new("Decal")
+		decal.Face = Enum.NormalId.Front
+		decal.Rotation = 30
+		decal.Parent = part
+		part.Parent = workspace
+
+		local rightBefore = worldImageRight(part, decal)
+		-- Click the front face: the decal's face maps to itself, so only the
+		-- Rotation compensation keeps the image fixed
+		doFlip(part, part.Position + Vector3.new(0, 0, -1.5), -Vector3.zAxis, withDecals)
+		t.expect(decal.Face).toBe(Enum.NormalId.Front)
+		t.expect(decal.Rotation ~= 30).toBeTruthy()
+		expectVectorNear(worldImageRight(part, decal), rightBefore)
+
+		part:Destroy()
+	end)
+
 	t.test("decals stay on their world face when preservation is on", function()
 		local withDecals: doFlip.FlipOptions = {
 			Clockwise = true,
@@ -409,12 +454,14 @@ return function(t: TestTypes.TestContext)
 		part.Parent = workspace
 
 		local worldDirBefore = part.CFrame:VectorToWorldSpace(Vector3.fromNormalId(decal.Face))
+		local imageRightBefore = worldImageRight(part, decal)
 		local clickPoint = part.CFrame:PointToWorldSpace(Vector3.new(0, 1.5, 0))
 		local clickNormal = part.CFrame:VectorToWorldSpace(Vector3.yAxis)
 
 		doFlip(part, clickPoint, clickNormal, withDecals)
 		local worldDirAfter = part.CFrame:VectorToWorldSpace(Vector3.fromNormalId(decal.Face))
 		expectVectorNear(worldDirAfter, worldDirBefore)
+		expectVectorNear(worldImageRight(part, decal), imageRightBefore)
 		-- The flip rotated about Top, so the decal's Face must have changed
 		t.expect(decal.Face == Enum.NormalId.Front).toBeFalsy()
 
@@ -443,12 +490,14 @@ return function(t: TestTypes.TestContext)
 		wedge.Parent = workspace
 
 		local worldDirBefore = wedge.CFrame:VectorToWorldSpace(Vector3.fromNormalId(decal.Face))
+		local imageRightBefore = worldImageRight(wedge, decal)
 		local result = doFlip(wedge,
 			wedge.CFrame:PointToWorldSpace(Vector3.new(1, 0, 0)), Vector3.xAxis, withDecals)
 		assert(result)
 		t.expect(decal.Parent).toBe(result)
 		local worldDirAfter = result.CFrame:VectorToWorldSpace(Vector3.fromNormalId(decal.Face))
 		expectVectorNear(worldDirAfter, worldDirBefore)
+		expectVectorNear(worldImageRight(result, decal), imageRightBefore)
 
 		result:Destroy()
 		wedge:Destroy()
@@ -504,6 +553,50 @@ return function(t: TestTypes.TestContext)
 		result:Destroy()
 		wedge:Destroy()
 		plain:Destroy()
+	end)
+
+	t.test("decal preservation visual check", function()
+		-- Screenshots a marked-image cube before and after a flip with decal
+		-- preservation on: the two captures should look identical
+		local AssetService = game:GetService("AssetService")
+		local withDecals: doFlip.FlipOptions = {
+			Clockwise = true,
+			PreserveAttachments = true,
+			PreserveDecals = true,
+			PreservePivot = false,
+		}
+		local image = AssetService:CreateEditableImage({Size = Vector2.new(64, 64)})
+		image:DrawRectangle(Vector2.new(0, 0), Vector2.new(64, 64), Color3.new(1, 1, 1), 0, Enum.ImageCombineType.Overwrite)
+		image:DrawRectangle(Vector2.new(0, 0), Vector2.new(64, 10), Color3.new(1, 0, 0), 0, Enum.ImageCombineType.Overwrite)
+		image:DrawRectangle(Vector2.new(0, 0), Vector2.new(10, 64), Color3.new(0, 1, 0), 0, Enum.ImageCombineType.Overwrite)
+		image:DrawRectangle(Vector2.new(0, 0), Vector2.new(16, 16), Color3.new(0, 0, 1), 0, Enum.ImageCombineType.Overwrite)
+
+		local part = Instance.new("Part")
+		part.Anchored = true
+		part.Size = Vector3.new(8, 8, 8)
+		part.CFrame = CFrame.new(0, 24, 0)
+		part.Color = Color3.new(1, 1, 1)
+		part.TopSurface = Enum.SurfaceType.Smooth
+		part.BottomSurface = Enum.SurfaceType.Smooth
+		for _, face in Enum.NormalId:GetEnumItems() do
+			local decal = Instance.new("Decal")
+			decal.Face = face
+			-- One face starts pre-rotated to exercise rotation compensation
+			decal.Rotation = if face == Enum.NormalId.Front then 90 else 0
+			decal.TextureContent = Content.fromObject(image)
+			decal.Parent = part
+		end
+		part.Parent = workspace
+
+		local camera = workspace.CurrentCamera
+		if camera then
+			camera.CFrame = CFrame.lookAt(part.Position + Vector3.new(10, 9, -12), part.Position)
+		end
+		t.screenshot("decals_before")
+		doFlip(part, part.Position + Vector3.new(0, 4, 0), Vector3.yAxis, withDecals)
+		t.screenshot("decals_after")
+
+		part:Destroy()
 	end)
 
 	t.test("foreign MeshParts flip in place with box behavior", function()

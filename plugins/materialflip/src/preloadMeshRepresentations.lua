@@ -69,27 +69,21 @@ local function preloadMeshRepresentations()
 	end
 	mStarted = true
 	task.spawn(function()
-		local startTime = os.clock()
 		local ok, err = pcall(function()
 			local batches = {
-				{name = "Wedge/Cylinder", instances = collectTemplates({"Wedge", "Cylinder"})},
-				{name = "CornerWedge", instances = collectTemplates({"CornerWedge"})},
+				collectTemplates({"Wedge", "Cylinder"}),
+				collectTemplates({"CornerWedge"}),
 			}
 			for _, batch in batches do
-				local batchStart = os.clock()
-				ContentProvider:PreloadAsync(batch.instances)
-				warmRender(batch.instances)
-				print(string.format("MaterialFlip: Preloaded and warmed %d %s meshes in %.2fs",
-					#batch.instances, batch.name, os.clock() - batchStart))
-				for _, instance in batch.instances do
+				ContentProvider:PreloadAsync(batch)
+				warmRender(batch)
+				for _, instance in batch do
 					instance:Destroy()
 				end
 			end
 		end)
 		if not ok then
 			warn("MaterialFlip: Mesh preload failed: " .. tostring(err))
-		else
-			print(string.format("MaterialFlip: Mesh preload finished in %.2fs total", os.clock() - startTime))
 		end
 	end)
 end

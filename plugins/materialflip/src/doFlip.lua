@@ -34,6 +34,19 @@ export type FlipOptions = {
 	PreservePivot: boolean,
 }
 
+-- Image space axes (U = image right, V = image down) of each box face in
+-- part local space, determined empirically with a marked test image; all
+-- satisfy U:Cross(V) == -normal. Decal/Texture Rotation turns the image
+-- clockwise as viewed from outside the face (also empirical).
+local kFaceUV: {[Enum.NormalId]: {U: Vector3, V: Vector3}} = {
+	[Enum.NormalId.Front] = {U = Vector3.new(-1, 0, 0), V = Vector3.new(0, -1, 0)},
+	[Enum.NormalId.Back] = {U = Vector3.new(1, 0, 0), V = Vector3.new(0, -1, 0)},
+	[Enum.NormalId.Right] = {U = Vector3.new(0, 0, -1), V = Vector3.new(0, -1, 0)},
+	[Enum.NormalId.Left] = {U = Vector3.new(0, 0, 1), V = Vector3.new(0, -1, 0)},
+	[Enum.NormalId.Top] = {U = Vector3.new(-1, 0, 0), V = Vector3.new(0, 0, -1)},
+	[Enum.NormalId.Bottom] = {U = Vector3.new(1, 0, 0), V = Vector3.new(0, 0, -1)},
+}
+
 local kSurfaceProps: {[Enum.NormalId]: string} = {
 	[Enum.NormalId.Top] = "TopSurface",
 	[Enum.NormalId.Bottom] = "BottomSurface",
@@ -114,6 +127,7 @@ local function doFlip(part: BasePart, worldPoint: Vector3, worldNormal: Vector3,
 	local recording = ChangeHistoryService:TryBeginRecording("MaterialFlip", "Material Flip")
 
 	-- Snapshots for content preservation, taken before any mutation
+	local savedCFrame = part.CFrame
 	local savedWorldPivot: CFrame? = if options.PreservePivot then part.CFrame * part.PivotOffset else nil
 	local attachmentPoses = if options.PreserveAttachments then collectAttachmentPoses(part) else nil
 	local faceInstances: {FaceInstance}? = nil
@@ -200,10 +214,23 @@ local function doFlip(part: BasePart, worldPoint: Vector3, worldNormal: Vector3,
 	end
 	if faceInstances then
 		-- Move each Decal/Texture to the local face now pointing in the world
-		-- direction its old face pointed in: q = newM^-1 * oldM
+		-- direction its old face pointed in (q = newM^-1 * oldM), and adjust
+		-- Rotation to compensate for how the new face's image axes sit
+		-- relative to the old face's, so the image appearance is unchanged
 		local q = Orientation.compose(Orientation.invert(newM), state.Orientation)
 		for _, faceInstance in faceInstances do
-			faceInstance.Face = Orientation.rotateNormalId(q, faceInstance.Face)
+			local oldFace = faceInstance.Face
+			local newFace = Orientation.rotateNormalId(q, oldFace)
+			local oldUV = kFaceUV[oldFace]
+			local newUV = kFaceUV[newFace]
+			-- delta = clockwise angle from the old face's world image axes to
+			-- the new face's (both perpendicular to the shared world normal)
+			local oldRight = savedCFrame:VectorToWorldSpace(oldUV.U)
+			local oldDown = savedCFrame:VectorToWorldSpace(oldUV.V)
+			local newRight = result.CFrame:VectorToWorldSpace(newUV.U)
+			local delta = math.deg(math.atan2(newRight:Dot(oldDown), newRight:Dot(oldRight)))
+			faceInstance.Face = newFace
+			faceInstance.Rotation = (faceInstance.Rotation - delta) % 360
 		end
 	end
 
