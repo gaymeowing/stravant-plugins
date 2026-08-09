@@ -16,12 +16,7 @@
 
 local Orientation = require("./Orientation")
 
--- CylinderY is a SpecialMesh (classic CylinderMesh style) cylinder: unlike
--- cylinder Parts whose axis is X, these render with their axis along Y.
--- People use them with non-uniform Scale for oval cylinders. They only ever
--- arise from SpecialMesh parts, so they're always PrimitiveOnly and never
--- need baked meshes.
-export type ShapeName = "Brick" | "Wedge" | "CornerWedge" | "Cylinder" | "CylinderY" | "Ball"
+export type ShapeName = "Brick" | "Wedge" | "CornerWedge" | "Cylinder" | "Ball"
 
 -- The wedge's one non-trivial symmetry: 180 degrees about the (0, 1, -1)
 -- diagonal, realized in part terms as "swap Y/Z sizes and rotate"
@@ -40,10 +35,6 @@ local function isSymmetryOf(shape: ShapeName, id: Orientation.OrientationId): bo
 		-- circle or an axis-aligned ellipse, handled by Y/Z size swaps)
 		local mapped = Orientation.getCFrame(id).XVector
 		return math.abs(math.abs(mapped.X) - 1) < 0.01
-	elseif shape == "CylinderY" then
-		-- Same, but the axis is Y
-		local mapped = Orientation.getCFrame(id).YVector
-		return math.abs(math.abs(mapped.Y) - 1) < 0.01
 	elseif shape == "Wedge" then
 		return id == Orientation.Identity or id == kWedgeFlip
 	elseif shape == "CornerWedge" then
@@ -52,7 +43,7 @@ local function isSymmetryOf(shape: ShapeName, id: Orientation.OrientationId): bo
 	error("Unknown shape: " .. tostring(shape))
 end
 
-local kShapes: {ShapeName} = {"Brick", "Wedge", "CornerWedge", "Cylinder", "CylinderY", "Ball"}
+local kShapes: {ShapeName} = {"Brick", "Wedge", "CornerWedge", "Cylinder", "Ball"}
 
 -- Precompute groups and class representatives
 local kSymmetryGroup: {[ShapeName]: {Orientation.OrientationId}} = {}

@@ -45,8 +45,7 @@ return function(t: TestTypes.TestContext)
 		local mesh = Instance.new("SpecialMesh")
 		mesh.MeshType = Enum.MeshType.Cylinder
 		mesh.Parent = part
-		-- SpecialMesh cylinders have their axis along Y, unlike cylinder Parts
-		t.expect(getShape(part)).toBe("CylinderY")
+		t.expect(getShape(part)).toBe("Cylinder")
 		mesh.MeshType = Enum.MeshType.Sphere
 		t.expect(getShape(part)).toBe("Ball")
 		part:Destroy()

@@ -8,7 +8,7 @@
 -- part isn't actually the primitive shape and is being treated as a box
 -- (unions, file meshes, trusses, etc).
 
-export type Shape = "Brick" | "Wedge" | "CornerWedge" | "Cylinder" | "CylinderY" | "Ball" | "Terrain"
+export type Shape = "Brick" | "Wedge" | "CornerWedge" | "Cylinder" | "Ball" | "Terrain"
 
 local kUniformScale = Vector3.new(1, 1, 1)
 
@@ -26,9 +26,7 @@ local function getShape(part: BasePart): (Shape, Vector3, boolean)
 			elseif meshType == Enum.MeshType.Wedge then
 				return "Wedge", scale, false
 			elseif meshType == Enum.MeshType.Cylinder then
-				-- SpecialMesh cylinders render with their axis along Y,
-				-- unlike cylinder Parts whose axis is X
-				return "CylinderY", scale, false
+				return "Cylinder", scale, false
 			elseif meshType == Enum.MeshType.Sphere or meshType == Enum.MeshType.Head then
 				return "Ball", scale, false
 			else

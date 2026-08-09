@@ -60,13 +60,6 @@ local function shapePoints(shape: ShapeData.ShapeName, size: Vector3): {Vector3}
 			Vector3.new( h.X, -h.Y, 0), Vector3.new( h.X, h.Y, 0),
 			Vector3.new( h.X, 0, -h.Z), Vector3.new( h.X, 0, h.Z),
 		}
-	elseif shape == "CylinderY" then
-		return {
-			Vector3.new(-h.X, -h.Y, 0), Vector3.new(-h.X, h.Y, 0),
-			Vector3.new(0, -h.Y, -h.Z), Vector3.new(0, -h.Y, h.Z),
-			Vector3.new( h.X, -h.Y, 0), Vector3.new( h.X, h.Y, 0),
-			Vector3.new(0, h.Y, -h.Z), Vector3.new(0, h.Y, h.Z),
-		}
 	elseif shape == "Ball" then
 		return {
 			Vector3.new(-h.X, 0, 0), Vector3.new(h.X, 0, 0),

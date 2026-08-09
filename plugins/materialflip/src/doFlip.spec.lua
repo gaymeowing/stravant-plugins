@@ -710,47 +710,11 @@ return function(t: TestTypes.TestContext)
 		union:Destroy()
 	end)
 
-	t.test("oval SpecialMesh cylinders flip about their Y axis in place", function()
-		local part = Instance.new("Part")
-		part.Anchored = true
-		part.Size = Vector3.new(4, 6, 2)
-		part.CFrame = CFrame.new(3, 80, -5)
-		local mesh = Instance.new("SpecialMesh")
-		mesh.MeshType = Enum.MeshType.Cylinder
-		mesh.Scale = Vector3.new(1.5, 1, 0.75)
-		mesh.Offset = Vector3.new(1, 0.5, 0.25)
-		mesh.Parent = part
-		part.Parent = workspace
-		local originalCFrame = part.CFrame
-		local worldOffsetBefore = originalCFrame:VectorToWorldSpace(mesh.Offset)
-
-		-- A quarter turn about Y is a symmetry of a Y axis cylinder: the flip
-		-- happens in place with the X/Z sizes, mesh scale, and offset following
-		local topPoint = part.Position + Vector3.new(0, 3, 0)
-		local result = doFlip(part, topPoint, Vector3.yAxis, kCW)
-		t.expect(result).toBe(part)
-		expectVectorNear(part.Size, Vector3.new(2, 6, 4))
-		expectVectorNear(mesh.Scale, Vector3.new(0.75, 1, 1.5))
-		expectVectorNear(part.CFrame:VectorToWorldSpace(mesh.Offset), worldOffsetBefore)
-
-		for _ = 1, 3 do
-			doFlip(part, topPoint, Vector3.yAxis, kCW)
-		end
-		expectCFrameNear(part.CFrame, originalCFrame)
-		expectVectorNear(part.Size, Vector3.new(4, 6, 2))
-		expectVectorNear(mesh.Scale, Vector3.new(1.5, 1, 0.75))
-		expectVectorNear(mesh.Offset, Vector3.new(1, 0.5, 0.25))
-
-		-- A quarter turn about X would tip the cylinder over: not a symmetry,
-		-- and SpecialMesh parts can't convert to baked meshes, so: no-op
-		local sidePoint = part.Position + Vector3.new(2, 0, 0)
-		t.expect(doFlip(part, sidePoint, Vector3.xAxis, kCW)).toBe(nil)
-		expectCFrameNear(part.CFrame, originalCFrame)
-
-		part:Destroy()
-	end)
-
 	t.test("ellipsoid SpecialMesh spheres flip freely with scale following", function()
+		-- People stretch Sphere meshes with non-uniform Scale for CSG work;
+		-- ellipsoids have the full box symmetry group so any face flips in
+		-- place, with the Scale permuting alongside the Size and the Offset
+		-- counter-rotating so the rendered solid stays put
 		local part = Instance.new("Part")
 		part.Anchored = true
 		part.Size = Vector3.new(4, 4, 4)
@@ -758,14 +722,16 @@ return function(t: TestTypes.TestContext)
 		local mesh = Instance.new("SpecialMesh")
 		mesh.MeshType = Enum.MeshType.Sphere
 		mesh.Scale = Vector3.new(1, 0.5, 0.25)
+		mesh.Offset = Vector3.new(1, 0.5, 0.25)
 		mesh.Parent = part
 		part.Parent = workspace
+		local worldOffsetBefore = part.CFrame:VectorToWorldSpace(mesh.Offset)
 
-		-- Ellipsoids have the full box symmetry group: any face flips in place
 		local topPoint = part.Position + Vector3.new(0, 2, 0)
 		local result = doFlip(part, topPoint, Vector3.yAxis, kCW)
 		t.expect(result).toBe(part)
 		expectVectorNear(mesh.Scale, Vector3.new(0.25, 0.5, 1))
+		expectVectorNear(part.CFrame:VectorToWorldSpace(mesh.Offset), worldOffsetBefore)
 
 		local sidePoint = part.Position + Vector3.new(2, 0, 0)
 		t.expect(doFlip(part, sidePoint, Vector3.xAxis, kCW)).toBe(part)
