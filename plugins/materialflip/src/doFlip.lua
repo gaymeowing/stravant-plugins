@@ -19,7 +19,7 @@ local Selection = game:GetService("Selection")
 local Orientation = require("./Orientation")
 local ShapeData = require("./ShapeData")
 local identifyPart = require("./identifyPart")
-local buildShapeMesh = require("./buildShapeMesh")
+local getMeshRepresentation = require("./getMeshRepresentation")
 local copyPartProps = require("./copyPartProps")
 
 local kSurfaceProps: {[Enum.NormalId]: string} = {
@@ -126,8 +126,6 @@ local function doFlip(part: BasePart, worldPoint: Vector3, clockwise: boolean): 
 				-- Legacy FormFactor parts can't freely resize without this
 				(part :: any).FormFactor = Enum.FormFactor.Custom
 			end)
-		else
-			part:SetAttribute(ShapeData.OrientationAttribute, newM)
 		end
 		part.Size = newSize
 		part:BreakJoints() -- Needed to "unstick" hinges.
@@ -140,15 +138,14 @@ local function doFlip(part: BasePart, worldPoint: Vector3, clockwise: boolean): 
 			replacement = createPrimitive(state.Shape)
 			replacement.TopSurface = Enum.SurfaceType.Smooth
 			replacement.BottomSurface = Enum.SurfaceType.Smooth
-			replacement.Size = newSize
 		else
-			-- Bake geometry = newM^-1 * S(s), so that with CFrame P * newM the
-			-- part occupies P * S(s) with its material frame rotated by newM
-			replacement = buildShapeMesh(state.Shape, Orientation.invert(newM), state.ShapeSize)
-			replacement:SetAttribute(ShapeData.ShapeAttribute, state.Shape)
-			replacement:SetAttribute(ShapeData.OrientationAttribute, newM)
+			-- The published class mesh is the unit shape with the class
+			-- rotation baked in; the permuted Size and CFrame P * newM make
+			-- the part occupy P * S(s) with its material frame rotated by newM
+			replacement = getMeshRepresentation(state.Shape, targetClass)
 		end
 		copyPartProps(part, replacement)
+		replacement.Size = newSize
 		replacement.CFrame = newCFrame
 
 		part:BreakJoints()

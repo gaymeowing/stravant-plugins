@@ -130,16 +130,14 @@ return function(t: TestTypes.TestContext)
 		local region = regionPoints(wedge)
 
 		-- Click the +X side face; a quarter turn about X is never a wedge
-		-- symmetry, so every intermediate state needs a mesh
-		local function sideClick(part: BasePart): Vector3
-			local state = identifyPart(part)
-			assert(state)
-			return state.ShapeCFrame:PointToWorldSpace(Vector3.new(state.ShapeSize.X / 2, 0, 0))
-		end
+		-- symmetry, so every intermediate state needs a mesh. The click point
+		-- is a fixed world position (the region never moves): re-deriving it
+		-- from the recovered shape frame would be ambiguous up to symmetry.
+		local sideClickPoint = wedge.CFrame:PointToWorldSpace(Vector3.new(1, 0, 0))
 
 		local current: BasePart = wedge
 		for step = 1, 3 do
-			local result = doFlip(current, sideClick(current), true)
+			local result = doFlip(current, sideClickPoint, true)
 			if not result then
 				t.fail("Flip step " .. step .. " failed")
 			end
@@ -151,13 +149,17 @@ return function(t: TestTypes.TestContext)
 			assert(state, "mesh state must be identifiable")
 			t.expect(state.Shape).toBe("Wedge")
 			t.expect(state.IsMeshRepresentation).toBeTruthy()
-			expectVectorNear(state.ShapeSize, Vector3.new(2, 3, 4))
+			-- The recovered state is normalized to the class representative,
+			-- so the size may be a symmetry-permuted variant of the original
+			local sorted = {state.ShapeSize.X, state.ShapeSize.Y, state.ShapeSize.Z}
+			table.sort(sorted)
+			t.expect(sorted).toEqual({2, 3, 4})
 			expectSameRegion(region, current)
 		end
 		t.expect(wedge.Parent).toBe(nil) -- replaced, not destroyed
 
 		-- Fourth flip returns to the primitive representation
-		local result = doFlip(current, sideClick(current), true)
+		local result = doFlip(current, sideClickPoint, true)
 		assert(result)
 		t.expect(result:IsA("WedgePart")).toBeTruthy()
 		expectVectorNear(result.Size, Vector3.new(2, 3, 4))

@@ -80,12 +80,6 @@ local ShapeData = {}
 
 ShapeData.WedgeFlip = kWedgeFlip
 
--- Attribute names used by the prototype MeshPart representation to record
--- what shape/orientation a mesh is. The production version will identify
--- meshes by the MeshId of published assets instead.
-ShapeData.ShapeAttribute = "MaterialFlipShape"
-ShapeData.OrientationAttribute = "MaterialFlipOrientation"
-
 function ShapeData.isValidShape(name: string): boolean
 	return kSymmetryGroup[name :: ShapeName] ~= nil
 end

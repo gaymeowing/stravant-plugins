@@ -12,12 +12,14 @@
 -- The pair (P, m) is only defined up to (P*h, h^-1*m) for h in the shape's
 -- symmetry group, which never matters: all derived behavior is invariant.
 --
--- Primitives always have m = identity. MeshPart representations carry their
--- orientation class in attributes for the prototype; the production version
--- will identify (shape, class) by MeshId of published mesh assets instead.
+-- Primitives always have m = identity. MeshPart representations are
+-- identified by the MeshId of the published mesh assets (MeshAssets.lua);
+-- their recovered orientation is the class representative, which is
+-- equivalent to the placed orientation modulo the shape's symmetry group.
 
 local Orientation = require("./Orientation")
 local ShapeData = require("./ShapeData")
+local MeshAssets = require("./MeshAssets")
 local getShape = require("./getShape")
 
 export type PartState = {
@@ -39,19 +41,14 @@ local function identifyPart(part: Instance?): PartState?
 	assert(part)
 
 	if part:IsA("MeshPart") then
-		local shape = part:GetAttribute(ShapeData.ShapeAttribute)
-		local orientation = part:GetAttribute(ShapeData.OrientationAttribute)
-		if type(shape) ~= "string" or not ShapeData.isValidShape(shape) then
+		local info = MeshAssets.fromMeshId(part.MeshId)
+		if not info then
 			return nil -- Foreign MeshPart, not flippable
 		end
-		if type(orientation) ~= "number" or orientation % 1 ~= 0
-			or orientation < 1 or orientation > Orientation.Count then
-			return nil
-		end
-		local m = orientation :: Orientation.OrientationId
+		local m = info.Orientation
 		return {
 			Part = part,
-			Shape = shape :: ShapeData.ShapeName,
+			Shape = info.Shape,
 			Orientation = m,
 			ShapeCFrame = part.CFrame * Orientation.getCFrame(m):Inverse(),
 			ShapeSize = Orientation.permuteSize(m, part.Size),

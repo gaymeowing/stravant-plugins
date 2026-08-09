@@ -9,10 +9,13 @@
 -- The geometry was validated against the real primitives (vertices, sharp vs
 -- smooth normals) in the identity orientation; see the workspace notes.
 --
--- Prototype note: these use in-memory EditableMesh assets which do NOT
--- persist through place save. The production path is publishing one unit
--- mesh per (shape, orientation class) and creating MeshParts by asset id,
--- which also enables reverse lookup by MeshId instead of attributes.
+-- This module is the source of truth for the geometry of the PUBLISHED mesh
+-- assets in MeshAssets.lua: each was generated from these builders at unit
+-- size and uploaded with AssetService:CreateAssetAsync. The plugin itself
+-- creates MeshParts from those published assets (getMeshRepresentation.lua)
+-- because in-memory EditableMesh assets do not persist through place save.
+-- If this geometry ever changes, the assets must be regenerated re-uploaded,
+-- and the id table updated - do not change one without the other.
 
 local AssetService = game:GetService("AssetService")
 

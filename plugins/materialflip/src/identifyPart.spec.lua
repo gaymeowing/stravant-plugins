@@ -2,7 +2,9 @@
 
 local TestTypes = require("./TestTypes")
 local Orientation = require("./Orientation")
+local ShapeData = require("./ShapeData")
 local identifyPart = require("./identifyPart")
+local getMeshRepresentation = require("./getMeshRepresentation")
 
 return function(t: TestTypes.TestContext)
 	t.test("identifies primitives with identity orientation", function()
@@ -19,6 +21,25 @@ return function(t: TestTypes.TestContext)
 		wedge:Destroy()
 	end)
 
+	t.test("identifies published mesh representations by MeshId", function()
+		local classId = ShapeData.classRepOf("Wedge",
+			Orientation.quarterTurnAbout(Enum.NormalId.Right, true))
+		local meshPart = getMeshRepresentation("Wedge", classId)
+		meshPart.Size = Orientation.permuteSize(Orientation.invert(classId), Vector3.new(2, 3, 4))
+		meshPart.CFrame = CFrame.new(5, 6, 7) * Orientation.getCFrame(classId)
+
+		local state = identifyPart(meshPart)
+		assert(state, "expected a state")
+		t.expect(state.Shape).toBe("Wedge")
+		t.expect(state.Orientation).toBe(classId)
+		t.expect(state.IsMeshRepresentation).toBeTruthy()
+		t.expect((state.ShapeSize - Vector3.new(2, 3, 4)).Magnitude < 0.001).toBeTruthy()
+		t.expect((state.ShapeCFrame.Position - Vector3.new(5, 6, 7)).Magnitude < 0.001).toBeTruthy()
+		t.expect((state.ShapeCFrame.XVector - Vector3.xAxis).Magnitude < 0.001).toBeTruthy()
+
+		meshPart:Destroy()
+	end)
+
 	t.test("flags SpecialMesh parts as primitive only", function()
 		local part = Instance.new("Part")
 		local mesh = Instance.new("SpecialMesh")
@@ -31,18 +52,10 @@ return function(t: TestTypes.TestContext)
 		part:Destroy()
 	end)
 
-	t.test("rejects terrain, foreign mesh parts, and invalid attributes", function()
+	t.test("rejects terrain and foreign mesh parts", function()
 		t.expect(identifyPart(workspace.Terrain)).toBe(nil)
 
 		local foreign = Instance.new("MeshPart")
-		t.expect(identifyPart(foreign)).toBe(nil)
-
-		foreign:SetAttribute("MaterialFlipShape", "NotAShape")
-		foreign:SetAttribute("MaterialFlipOrientation", 3)
-		t.expect(identifyPart(foreign)).toBe(nil)
-
-		foreign:SetAttribute("MaterialFlipShape", "Wedge")
-		foreign:SetAttribute("MaterialFlipOrientation", 99)
 		t.expect(identifyPart(foreign)).toBe(nil)
 		foreign:Destroy()
 	end)
