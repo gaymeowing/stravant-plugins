@@ -117,16 +117,20 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 		local coneLength = length * 0.45
 		local shaftLength = length - coneLength
 		local halfZ = size.Z / 2
-		-- Adornment CFrames are in the adornee's local space; rotate so the
-		-- adornment's +Z points out of the part's front (-Z) face
-		local outward = CFrame.Angles(0, math.pi, 0)
+		-- Adornment CFrames are in the adornee's local space. The cylinder is
+		-- centered on its CFrame; the cone's base is at its CFrame with the
+		-- apex extending along its local -Z (verified empirically), which for
+		-- an identity rotation is exactly out the part's front face.
 		indicatorShaft.Height = shaftLength
 		indicatorShaft.Radius = math.clamp(length * 0.05, 0.05, 0.25)
-		indicatorShaft.CFrame = CFrame.new(0, 0, -(halfZ + shaftLength / 2)) * outward
+		indicatorShaft.CFrame = CFrame.new(0, 0, -(halfZ + shaftLength / 2))
 		indicatorCone.Height = coneLength
 		indicatorCone.Radius = math.clamp(length * 0.14, 0.12, 0.7)
-		indicatorCone.CFrame = CFrame.new(0, 0, -(halfZ + shaftLength)) * outward
-		indicatorLabel.StudsOffset = Vector3.new(0, 0, -(halfZ + length + 0.7))
+		indicatorCone.CFrame = CFrame.new(0, 0, -(halfZ + shaftLength))
+		-- World space offset: StudsOffset is not in the adornee's object
+		-- space, so compute the arrow tip position ourselves
+		indicatorLabel.StudsOffsetWorldSpace = part.CFrame:VectorToWorldSpace(
+			Vector3.new(0, 0, -(halfZ + length + 0.7)))
 		indicatorShaft.Adornee = part
 		indicatorCone.Adornee = part
 		indicatorLabel.Adornee = part

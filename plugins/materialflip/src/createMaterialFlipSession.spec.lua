@@ -35,13 +35,13 @@ return function(t: TestTypes.TestContext)
 		local shaft = CoreGui:FindFirstChild("MaterialFlipFrontShaft") :: CylinderHandleAdornment
 		t.expect(cone.Adornee).toBe(part)
 		t.expect(shaft.Adornee).toBe(part)
-		-- The arrow comes out of the front (-Z) face
+		-- The arrow comes out of the front (-Z) face: the cone's base sits
+		-- beyond the face and its apex (along its local -Z) extends outward
 		if cone.CFrame.Position.Z >= -part.Size.Z / 2 then
-			t.fail("Cone should be beyond the front face, got " .. tostring(cone.CFrame.Position))
+			t.fail("Cone base should be beyond the front face, got " .. tostring(cone.CFrame.Position))
 		end
-		-- And points outward: the adornment's +Z is the part's -Z
-		if (cone.CFrame.ZVector - Vector3.new(0, 0, -1)).Magnitude > 0.001 then
-			t.fail("Cone should point out the front, got " .. tostring(cone.CFrame.ZVector))
+		if (cone.CFrame.ZVector - Vector3.new(0, 0, 1)).Magnitude > 0.001 then
+			t.fail("Cone apex should extend out the front, got ZVector " .. tostring(cone.CFrame.ZVector))
 		end
 
 		session.TestSetHover(nil)
