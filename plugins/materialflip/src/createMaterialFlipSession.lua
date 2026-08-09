@@ -83,11 +83,25 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 	indicatorCone.Color3 = kIndicatorColor
 	indicatorCone.Parent = CoreGui
 
+	-- The label is adorned to an invisible anchor part that we place at the
+	-- arrow tip with no offset at all: BillboardGui offset behavior is too
+	-- janky to rely on. The anchor is deliberately parented to nil - the
+	-- BillboardGui only needs its world position.
+	local indicatorLabelAnchor = Instance.new("Part")
+	indicatorLabelAnchor.Name = "MaterialFlipFrontLabelAnchor"
+	indicatorLabelAnchor.Anchored = true
+	indicatorLabelAnchor.CanCollide = false
+	indicatorLabelAnchor.CanQuery = false
+	indicatorLabelAnchor.CanTouch = false
+	indicatorLabelAnchor.Transparency = 1
+	indicatorLabelAnchor.Size = Vector3.new(0.05, 0.05, 0.05)
+
 	local indicatorLabel = Instance.new("BillboardGui")
 	indicatorLabel.Name = "MaterialFlipFrontLabel"
 	indicatorLabel.Size = UDim2.fromOffset(60, 18)
 	indicatorLabel.AlwaysOnTop = true
 	indicatorLabel.Enabled = false
+	indicatorLabel.Adornee = indicatorLabelAnchor
 	indicatorLabel.Parent = CoreGui
 	local indicatorLabelText = Instance.new("TextLabel")
 	indicatorLabelText.BackgroundTransparency = 1
@@ -107,7 +121,6 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 		if not part then
 			indicatorShaft.Adornee = nil
 			indicatorCone.Adornee = nil
-			indicatorLabel.Adornee = nil
 			indicatorLabel.Enabled = false
 			return
 		end
@@ -127,13 +140,9 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 		indicatorCone.Height = coneLength
 		indicatorCone.Radius = math.clamp(length * 0.14, 0.12, 0.7)
 		indicatorCone.CFrame = CFrame.new(0, 0, -(halfZ + shaftLength))
-		-- World space offset: StudsOffset is not in the adornee's object
-		-- space, so compute the arrow tip position ourselves
-		indicatorLabel.StudsOffsetWorldSpace = part.CFrame:VectorToWorldSpace(
-			Vector3.new(0, 0, -(halfZ + length + 0.7)))
+		indicatorLabelAnchor.CFrame = part.CFrame * CFrame.new(0, 0, -(halfZ + length + 0.7))
 		indicatorShaft.Adornee = part
 		indicatorCone.Adornee = part
-		indicatorLabel.Adornee = part
 		indicatorLabel.Enabled = true
 	end
 
@@ -194,6 +203,7 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 			indicatorShaft:Destroy()
 			indicatorCone:Destroy()
 			indicatorLabel:Destroy()
+			indicatorLabelAnchor:Destroy()
 			mHoverPart = nil
 		end,
 		TestClick = function(part: BasePart, point: Vector3): BasePart?

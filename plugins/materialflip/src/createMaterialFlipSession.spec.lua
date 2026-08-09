@@ -33,6 +33,7 @@ return function(t: TestTypes.TestContext)
 		session.TestSetHover(part)
 		local cone = CoreGui:FindFirstChild("MaterialFlipFrontCone") :: ConeHandleAdornment
 		local shaft = CoreGui:FindFirstChild("MaterialFlipFrontShaft") :: CylinderHandleAdornment
+		local label = CoreGui:FindFirstChild("MaterialFlipFrontLabel") :: BillboardGui
 		t.expect(cone.Adornee).toBe(part)
 		t.expect(shaft.Adornee).toBe(part)
 		-- The arrow comes out of the front (-Z) face: the cone's base sits
@@ -43,10 +44,19 @@ return function(t: TestTypes.TestContext)
 		if (cone.CFrame.ZVector - Vector3.new(0, 0, 1)).Magnitude > 0.001 then
 			t.fail("Cone apex should extend out the front, got ZVector " .. tostring(cone.CFrame.ZVector))
 		end
+		-- The label is adorned to the invisible anchor placed past the arrow
+		-- tip (size (4,4,6): arrow length 3, so tip margin puts it at z=-6.7)
+		t.expect(label.Enabled).toBeTruthy()
+		local anchor = label.Adornee :: BasePart
+		t.expect(anchor).toBeTruthy()
+		if (anchor.CFrame.Position - Vector3.new(0, 0, -6.7)).Magnitude > 0.001 then
+			t.fail("Label anchor in the wrong place: " .. tostring(anchor.CFrame.Position))
+		end
 
 		session.TestSetHover(nil)
 		t.expect(cone.Adornee).toBe(nil)
 		t.expect(shaft.Adornee).toBe(nil)
+		t.expect(label.Enabled).toBeFalsy()
 
 		part:Destroy()
 		session.Destroy()
