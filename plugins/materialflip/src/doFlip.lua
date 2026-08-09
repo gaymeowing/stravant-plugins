@@ -30,6 +30,8 @@ export type FlipOptions = {
 	PreserveAttachments: boolean,
 	-- Reassign Decal/Texture Face so they stay on the same world face
 	PreserveDecals: boolean,
+	-- Adjust PivotOffset so the world space pivot stays where it was
+	PreservePivot: boolean,
 }
 
 local kSurfaceProps: {[Enum.NormalId]: string} = {
@@ -112,6 +114,7 @@ local function doFlip(part: BasePart, worldPoint: Vector3, worldNormal: Vector3,
 	local recording = ChangeHistoryService:TryBeginRecording("MaterialFlip", "Material Flip")
 
 	-- Snapshots for content preservation, taken before any mutation
+	local savedWorldPivot: CFrame? = if options.PreservePivot then part.CFrame * part.PivotOffset else nil
 	local attachmentPoses = if options.PreserveAttachments then collectAttachmentPoses(part) else nil
 	local faceInstances: {FaceInstance}? = nil
 	if options.PreserveDecals then
@@ -187,6 +190,9 @@ local function doFlip(part: BasePart, worldPoint: Vector3, worldNormal: Vector3,
 	end
 
 	-- Restore preserved content now that the part has its new frame
+	if savedWorldPivot then
+		result.PivotOffset = result.CFrame:Inverse() * savedWorldPivot
+	end
 	if attachmentPoses then
 		for _, entry in attachmentPoses do
 			entry.attachment.WorldCFrame = entry.worldCFrame

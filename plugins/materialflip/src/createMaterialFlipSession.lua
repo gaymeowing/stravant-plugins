@@ -67,6 +67,7 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 			Clockwise = activeSettings.RotateDirection == "Clockwise",
 			PreserveAttachments = activeSettings.PreserveAttachments,
 			PreserveDecals = activeSettings.PreserveDecals,
+			PreservePivot = activeSettings.PreservePivot,
 		}
 	end
 

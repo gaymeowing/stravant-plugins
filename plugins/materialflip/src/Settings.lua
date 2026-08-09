@@ -11,6 +11,7 @@ export type MaterialFlipSettings = PluginGuiTypes.PluginGuiSettings & {
 	RotateDirection: RotateDirection,
 	PreserveAttachments: boolean,
 	PreserveDecals: boolean,
+	PreservePivot: boolean,
 }
 
 local function loadSettings(plugin: Plugin): MaterialFlipSettings
@@ -33,6 +34,7 @@ local function loadSettings(plugin: Plugin): MaterialFlipSettings
 		RotateDirection = if raw.RotateDirection ~= nil then raw.RotateDirection else "Clockwise",
 		PreserveAttachments = if raw.PreserveAttachments ~= nil then raw.PreserveAttachments else true,
 		PreserveDecals = if raw.PreserveDecals ~= nil then raw.PreserveDecals else false,
+		PreservePivot = if raw.PreservePivot ~= nil then raw.PreservePivot else false,
 	}
 end
 local function saveSettings(plugin: Plugin, settings: MaterialFlipSettings)
@@ -50,6 +52,7 @@ local function saveSettings(plugin: Plugin, settings: MaterialFlipSettings)
 		RotateDirection = settings.RotateDirection,
 		PreserveAttachments = settings.PreserveAttachments,
 		PreserveDecals = settings.PreserveDecals,
+		PreservePivot = settings.PreservePivot,
 	})
 end
 

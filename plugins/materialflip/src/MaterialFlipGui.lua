@@ -108,6 +108,20 @@ local function OptionsPanel(props: {
 				HelpRichText = "Reassign the Face of Decals and Textures so they stay where they are instead of rotating along with the material.",
 			}),
 		}),
+		PreservePivot = e(HelpGui.WithHelpIcon, {
+			LayoutOrder = 3,
+			Subject = e(Checkbox, {
+				Label = "Preserve Pivot",
+				Checked = props.Settings.PreservePivot,
+				Changed = function(newValue: boolean)
+					props.Settings.PreservePivot = newValue
+					props.UpdatedSettings()
+				end,
+			}),
+			Help = e(HelpGui.BasicTooltip, {
+				HelpRichText = "Adjust the PivotOffset so the part's pivot stays at the same world space location instead of rotating along with the material.",
+			}),
+		}),
 	})
 end
 

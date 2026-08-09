@@ -5,8 +5,8 @@ local doFlip = require("./doFlip")
 local identifyPart = require("./identifyPart")
 local TestHelpers = require("./TestHelpers")
 
-local kCW: doFlip.FlipOptions = {Clockwise = true, PreserveAttachments = true, PreserveDecals = false}
-local kCCW: doFlip.FlipOptions = {Clockwise = false, PreserveAttachments = true, PreserveDecals = false}
+local kCW: doFlip.FlipOptions = {Clockwise = true, PreserveAttachments = true, PreserveDecals = false, PreservePivot = false}
+local kCCW: doFlip.FlipOptions = {Clockwise = false, PreserveAttachments = true, PreserveDecals = false, PreservePivot = false}
 
 return function(t: TestTypes.TestContext)
 	local function expectVectorNear(actual: Vector3, expected: Vector3)
@@ -372,6 +372,7 @@ return function(t: TestTypes.TestContext)
 			Clockwise = true,
 			PreserveAttachments = false,
 			PreserveDecals = false,
+			PreservePivot = false,
 		}
 		local part = Instance.new("Part")
 		part.Anchored = true
@@ -396,6 +397,7 @@ return function(t: TestTypes.TestContext)
 			Clockwise = true,
 			PreserveAttachments = true,
 			PreserveDecals = true,
+			PreservePivot = false,
 		}
 		local part = Instance.new("Part")
 		part.Anchored = true
@@ -429,6 +431,7 @@ return function(t: TestTypes.TestContext)
 			Clockwise = true,
 			PreserveAttachments = true,
 			PreserveDecals = true,
+			PreservePivot = false,
 		}
 		local wedge = Instance.new("WedgePart")
 		wedge.Anchored = true
@@ -449,6 +452,58 @@ return function(t: TestTypes.TestContext)
 
 		result:Destroy()
 		wedge:Destroy()
+	end)
+
+	t.test("pivot keeps its world pose when preservation is on", function()
+		local withPivot: doFlip.FlipOptions = {
+			Clockwise = true,
+			PreserveAttachments = true,
+			PreserveDecals = false,
+			PreservePivot = true,
+		}
+		local part = Instance.new("Part")
+		part.Anchored = true
+		part.Size = Vector3.new(2, 3, 4)
+		part.CFrame = CFrame.new(6, 14, -8) * CFrame.Angles(0.5, 0.2, 0.8)
+		part.PivotOffset = CFrame.new(1, -0.5, 2) * CFrame.Angles(0.3, 0.6, 0)
+		part.Parent = workspace
+		local worldPivot = part:GetPivot()
+
+		local clickPoint = part.CFrame:PointToWorldSpace(Vector3.new(0, 1.5, 0))
+		local clickNormal = part.CFrame:VectorToWorldSpace(Vector3.yAxis)
+		doFlip(part, clickPoint, clickNormal, withPivot)
+		expectCFrameNear(part:GetPivot(), worldPivot)
+
+		-- Through a representation swap too
+		local wedge = Instance.new("WedgePart")
+		wedge.Anchored = true
+		wedge.Size = Vector3.new(2, 3, 4)
+		wedge.CFrame = CFrame.new(0, 25, 12)
+		wedge.PivotOffset = CFrame.new(-1, 1, 0.5) * CFrame.Angles(0, 0.4, 0.2)
+		wedge.Parent = workspace
+		local wedgePivot = wedge:GetPivot()
+		local result = doFlip(wedge,
+			wedge.CFrame:PointToWorldSpace(Vector3.new(1, 0, 0)), Vector3.xAxis, withPivot)
+		assert(result)
+		expectCFrameNear(result:GetPivot(), wedgePivot)
+
+		-- And with preservation off the pivot rotates with the material
+		local plain = Instance.new("Part")
+		plain.Anchored = true
+		plain.Size = Vector3.new(2, 2, 2)
+		plain.CFrame = CFrame.new(9, 30, 3)
+		plain.PivotOffset = CFrame.new(1, 0, 0)
+		plain.Parent = workspace
+		local plainPivotBefore = plain:GetPivot()
+		doFlip(plain, plain.Position + Vector3.new(0, 1, 0), Vector3.yAxis, kCW)
+		if (plain:GetPivot().Position - plainPivotBefore.Position).Magnitude < 0.5 then
+			t.fail("Pivot should have rotated with the part")
+		end
+
+		part:Destroy()
+		result:Destroy()
+		wedge:Destroy()
+		plain:Destroy()
 	end)
 
 	t.test("foreign MeshParts flip in place with box behavior", function()
