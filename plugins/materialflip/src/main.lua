@@ -57,7 +57,8 @@ return function(plugin: Plugin, panel: DockWidgetPluginGui, buttonClicked: Signa
 	-- hover info here too made the UI shift around annoyingly
 	local function getStatus(): (string, boolean)
 		local state = if mSession then mSession.GetHoverState() else nil
-		if state and state.ApproximatedAsBox then
+		if state and state.ApproximatedAsBox
+			and not (activeSettings.AllowMeshPartRotation and state.CsgRotatable) then
 			return "This part is not a primitive shape. It will be rotated as if it were a box.", true
 		end
 		return "Hover over a part and click to rotate its material.", false

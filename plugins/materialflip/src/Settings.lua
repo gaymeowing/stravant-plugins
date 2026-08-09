@@ -13,6 +13,7 @@ export type MaterialFlipSettings = PluginGuiTypes.PluginGuiSettings & {
 	PreserveDecals: boolean,
 	PreservePivot: boolean,
 	TargetLocked: boolean,
+	AllowMeshPartRotation: boolean,
 }
 
 local function loadSettings(plugin: Plugin): MaterialFlipSettings
@@ -37,6 +38,7 @@ local function loadSettings(plugin: Plugin): MaterialFlipSettings
 		PreserveDecals = if raw.PreserveDecals ~= nil then raw.PreserveDecals else false,
 		PreservePivot = if raw.PreservePivot ~= nil then raw.PreservePivot else false,
 		TargetLocked = if raw.TargetLocked ~= nil then raw.TargetLocked else false,
+		AllowMeshPartRotation = if raw.AllowMeshPartRotation ~= nil then raw.AllowMeshPartRotation else false,
 	}
 end
 local function saveSettings(plugin: Plugin, settings: MaterialFlipSettings)
@@ -56,6 +58,7 @@ local function saveSettings(plugin: Plugin, settings: MaterialFlipSettings)
 		PreserveDecals = settings.PreserveDecals,
 		PreservePivot = settings.PreservePivot,
 		TargetLocked = settings.TargetLocked,
+		AllowMeshPartRotation = settings.AllowMeshPartRotation,
 	})
 end
 

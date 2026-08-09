@@ -60,6 +60,7 @@ return function(t: TestTypes.TestContext)
 		t.expect(state.ApproximatedAsBox).toBeTruthy()
 		t.expect(state.PrimitiveOnly).toBeTruthy()
 		t.expect(state.IsMeshRepresentation).toBeFalsy()
+		t.expect(state.CsgRotatable).toBeTruthy()
 		foreign:Destroy()
 	end)
 

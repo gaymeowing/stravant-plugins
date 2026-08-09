@@ -111,6 +111,28 @@ return function(t: TestTypes.TestContext)
 		session.Destroy()
 	end)
 
+	t.test("no box warning for MeshParts when Allow MeshPart Rotation is on", function()
+		local settings = TestHelpers.makeTestSettings()
+		settings.AllowMeshPartRotation = true
+		local session = createMaterialFlipSession(settings)
+
+		local foreign = Instance.new("MeshPart")
+		foreign.Anchored = true
+		foreign.Size = Vector3.new(4, 4, 4)
+		foreign.Parent = workspace
+
+		session.TestSetHover(foreign, foreign.Position + Vector3.new(0, 2, 0), Vector3.yAxis)
+		local state = session.GetHoverState()
+		assert(state)
+		t.expect(state.CsgRotatable).toBeTruthy()
+		local label = CoreGui:FindFirstChild("MaterialFlipFrontLabel") :: BillboardGui
+		local text = label:FindFirstChildOfClass("TextLabel") :: TextLabel
+		t.expect(text.Text).toBe("Front")
+
+		foreign:Destroy()
+		session.Destroy()
+	end)
+
 	t.test("TestClick flips a flippable part and skips a locked one", function()
 		local session = createMaterialFlipSession(TestHelpers.makeTestSettings())
 

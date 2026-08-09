@@ -3,10 +3,12 @@
 local TestTypes = require("./TestTypes")
 local doFlip = require("./doFlip")
 local identifyPart = require("./identifyPart")
+local buildShapeMesh = require("./buildShapeMesh")
+local Orientation = require("./Orientation")
 local TestHelpers = require("./TestHelpers")
 
-local kCW: doFlip.FlipOptions = {Clockwise = true, PreserveAttachments = true, PreserveDecals = false, PreservePivot = false}
-local kCCW: doFlip.FlipOptions = {Clockwise = false, PreserveAttachments = true, PreserveDecals = false, PreservePivot = false}
+local kCW: doFlip.FlipOptions = {Clockwise = true, PreserveAttachments = true, PreserveDecals = false, PreservePivot = false, AllowMeshPartRotation = false}
+local kCCW: doFlip.FlipOptions = {Clockwise = false, PreserveAttachments = true, PreserveDecals = false, PreservePivot = false, AllowMeshPartRotation = false}
 
 return function(t: TestTypes.TestContext)
 	local function expectVectorNear(actual: Vector3, expected: Vector3)
@@ -373,6 +375,7 @@ return function(t: TestTypes.TestContext)
 			PreserveAttachments = false,
 			PreserveDecals = false,
 			PreservePivot = false,
+			AllowMeshPartRotation = false,
 		}
 		local part = Instance.new("Part")
 		part.Anchored = true
@@ -415,6 +418,7 @@ return function(t: TestTypes.TestContext)
 			PreserveAttachments = true,
 			PreserveDecals = true,
 			PreservePivot = false,
+			AllowMeshPartRotation = false,
 		}
 		local part = Instance.new("Part")
 		part.Anchored = true
@@ -443,6 +447,7 @@ return function(t: TestTypes.TestContext)
 			PreserveAttachments = true,
 			PreserveDecals = true,
 			PreservePivot = false,
+			AllowMeshPartRotation = false,
 		}
 		local part = Instance.new("Part")
 		part.Anchored = true
@@ -479,6 +484,7 @@ return function(t: TestTypes.TestContext)
 			PreserveAttachments = true,
 			PreserveDecals = true,
 			PreservePivot = false,
+			AllowMeshPartRotation = false,
 		}
 		local wedge = Instance.new("WedgePart")
 		wedge.Anchored = true
@@ -509,6 +515,7 @@ return function(t: TestTypes.TestContext)
 			PreserveAttachments = true,
 			PreserveDecals = false,
 			PreservePivot = true,
+			AllowMeshPartRotation = false,
 		}
 		local part = Instance.new("Part")
 		part.Anchored = true
@@ -564,6 +571,7 @@ return function(t: TestTypes.TestContext)
 			PreserveAttachments = true,
 			PreserveDecals = true,
 			PreservePivot = false,
+			AllowMeshPartRotation = false,
 		}
 		local image = AssetService:CreateEditableImage({Size = Vector2.new(64, 64)})
 		image:DrawRectangle(Vector2.new(0, 0), Vector2.new(64, 64), Color3.new(1, 1, 1), 0, Enum.ImageCombineType.Overwrite)
@@ -619,6 +627,49 @@ return function(t: TestTypes.TestContext)
 		expectVectorNear(foreign.Size, Vector3.new(1, 2, 3))
 		expectCFrameNear(foreign.CFrame, originalCFrame)
 
+		foreign:Destroy()
+	end)
+
+	t.test("Allow MeshPart Rotation unions foreign MeshParts with a rotated frame", function()
+		local csgOptions: doFlip.FlipOptions = {
+			Clockwise = true,
+			PreserveAttachments = true,
+			PreserveDecals = false,
+			PreservePivot = false,
+			AllowMeshPartRotation = true,
+		}
+		-- An in-memory mesh has no recognized MeshId, so it's a foreign part
+		local foreign = buildShapeMesh("Wedge", Orientation.Identity, Vector3.new(2, 3, 4))
+		foreign.Anchored = true
+		foreign.CFrame = CFrame.new(5, 60, 5)
+		foreign.Parent = workspace
+		local before = foreign.CFrame
+
+		local result = doFlip(foreign, foreign.Position + Vector3.new(0, 1.5, 0), Vector3.yAxis, csgOptions)
+		assert(result, "expected a CSG flip result")
+		-- The CSG result replaces the part (UnionAsync returns a MeshPart when
+		-- a MeshPart is an operand, a UnionOperation otherwise)
+		t.expect(result == foreign).toBeFalsy()
+		t.expect(result.Parent).toBe(workspace)
+		t.expect(foreign.Parent).toBe(nil) -- replaced, not destroyed
+
+		-- Frame rotated a quarter turn about Y at the same position: the
+		-- geometry stays put while the material frame turns
+		local expected = before * Orientation.getCFrame(Orientation.quarterTurnAbout(Enum.NormalId.Top, true))
+		expectVectorNear(result.CFrame.Position, before.Position)
+		expectVectorNear(result.CFrame.XVector, expected.XVector)
+		expectVectorNear(result.CFrame.YVector, expected.YVector)
+
+		-- The result stays CSG rotatable on further flips
+		local state = identifyPart(result)
+		assert(state)
+		t.expect(state.CsgRotatable).toBeTruthy()
+		local result2 = doFlip(result, result.CFrame.Position + Vector3.new(0, 1.5, 0), Vector3.yAxis, csgOptions)
+		assert(result2, "expected a second CSG flip result")
+		t.expect(result2 == result).toBeFalsy()
+
+		result2:Destroy()
+		result:Destroy()
 		foreign:Destroy()
 	end)
 

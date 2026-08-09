@@ -68,6 +68,7 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 			PreserveAttachments = activeSettings.PreserveAttachments,
 			PreserveDecals = activeSettings.PreserveDecals,
 			PreservePivot = activeSettings.PreservePivot,
+			AllowMeshPartRotation = activeSettings.AllowMeshPartRotation,
 		}
 	end
 
@@ -231,8 +232,11 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 		indicatorCone.Radius = math.clamp(length * 0.14, 0.12, 0.7)
 		indicatorCone.CFrame = CFrame.new(0, 0, -(halfZ + shaftLength))
 		indicatorLabel.StudsOffsetWorldSpace = (part.CFrame * CFrame.new(0, 0, -(halfZ + length + 0.7))).Position
-		-- Warn on the label when the part is only approximated as a box
-		local approximated = mHoverState ~= nil and (mHoverState :: identifyPart.PartState).ApproximatedAsBox
+		-- Warn on the label when the part is only approximated as a box (CSG
+		-- rotatable parts rotate correctly when the setting allows it)
+		local state = mHoverState
+		local approximated = state ~= nil and (state :: identifyPart.PartState).ApproximatedAsBox
+			and not (activeSettings.AllowMeshPartRotation and (state :: identifyPart.PartState).CsgRotatable)
 		if approximated then
 			indicatorLabelText.Text = "Front\n<font color=\"#FF8C00\">\u{26A0} Non-primitive</font>"
 			indicatorLabel.Size = UDim2.fromOffset(110, 36)

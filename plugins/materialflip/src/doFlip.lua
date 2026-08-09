@@ -14,6 +14,7 @@
 -- doesn't change, and swapped for a new instance when it does.
 
 local ChangeHistoryService = game:GetService("ChangeHistoryService")
+local GeometryService = game:GetService("GeometryService")
 local Selection = game:GetService("Selection")
 
 local Orientation = require("./Orientation")
@@ -32,6 +33,10 @@ export type FlipOptions = {
 	PreserveDecals: boolean,
 	-- Adjust PivotOffset so the world space pivot stays where it was
 	PreservePivot: boolean,
+	-- Rotate the material of foreign MeshParts/unions correctly by unioning
+	-- via the CSG API (the first input supplies the result's material frame).
+	-- Creates a unique mesh per use: significant performance cost.
+	AllowMeshPartRotation: boolean,
 }
 
 -- Image space axes (U = image right, V = image down) of each box face in
@@ -151,7 +156,59 @@ local function doFlip(part: BasePart, worldPoint: Vector3, worldNormal: Vector3,
 		else state.IsMeshRepresentation and targetClass == currentClass
 
 	local result: BasePart
-	if sameRepresentation then
+	local function swapIn(replacement: BasePart)
+		part:BreakJoints()
+		for _, child in part:GetChildren() do
+			child.Parent = replacement
+		end
+		replacement.Parent = part.Parent
+
+		-- Keep the selection on the result if the old part was selected
+		local selection = Selection:Get()
+		for i, selected in selection do
+			if selected == part then
+				selection[i] = replacement
+				Selection:Set(selection)
+				break
+			end
+		end
+
+		-- Not :Destroy() so that undo can restore the old part
+		part.Parent = nil
+		result = replacement
+	end
+
+	if state.ApproximatedAsBox and state.CsgRotatable and options.AllowMeshPartRotation then
+		-- CSG path: rebuild the part as a union whose first input carries the
+		-- rotated material frame (a tiny helper part hidden at the center).
+		-- The union's geometry stays exactly where it was while its local
+		-- frame - and therefore its material - takes the quarter turn.
+		local helper = Instance.new("Part")
+		helper.Size = Vector3.new(0.05, 0.05, 0.05)
+		helper.CFrame = newCFrame
+		local ok, unionResults = pcall(function()
+			return GeometryService:UnionAsync(helper, {part})
+		end)
+		helper:Destroy()
+		local replacement = if ok and type(unionResults) == "table" and unionResults[1]
+			then unionResults[1] :: BasePart
+			else nil
+		if not replacement then
+			warn("MaterialFlip: CSG rotation failed: " .. tostring(if ok then "no result" else unionResults))
+			if recording then
+				ChangeHistoryService:FinishRecording(recording, Enum.FinishRecordingOperation.Cancel)
+			end
+			return nil
+		end
+		assert(replacement)
+		copyPartProps(part, replacement)
+		if replacement:IsA("UnionOperation") then
+			replacement.UsePartColor = true
+		end
+		-- The union's geometry and CFrame are already baked in place: don't
+		-- set Size or CFrame
+		swapIn(replacement)
+	elseif sameRepresentation then
 		-- Update in place
 		part:BreakJoints()
 		if not state.IsMeshRepresentation then
@@ -181,26 +238,7 @@ local function doFlip(part: BasePart, worldPoint: Vector3, worldNormal: Vector3,
 		copyPartProps(part, replacement)
 		replacement.Size = newSize
 		replacement.CFrame = newCFrame
-
-		part:BreakJoints()
-		for _, child in part:GetChildren() do
-			child.Parent = replacement
-		end
-		replacement.Parent = part.Parent
-
-		-- Keep the selection on the result if the old part was selected
-		local selection = Selection:Get()
-		for i, selected in selection do
-			if selected == part then
-				selection[i] = replacement
-				Selection:Set(selection)
-				break
-			end
-		end
-
-		-- Not :Destroy() so that undo can restore the old part
-		part.Parent = nil
-		result = replacement
+		swapIn(replacement)
 	end
 
 	-- Restore preserved content now that the part has its new frame

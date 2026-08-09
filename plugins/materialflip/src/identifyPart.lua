@@ -35,6 +35,9 @@ export type PartState = {
 	-- The part isn't really its classified shape (union, foreign mesh,
 	-- truss...): it flips with box behavior, which rotates its geometry
 	ApproximatedAsBox: boolean,
+	-- The part's real geometry can go through the CSG APIs, so the Allow
+	-- MeshPart Rotation setting can rotate its material correctly
+	CsgRotatable: boolean,
 }
 
 local function identifyPart(part: Instance?): PartState?
@@ -56,6 +59,7 @@ local function identifyPart(part: Instance?): PartState?
 				IsMeshRepresentation = true,
 				PrimitiveOnly = false,
 				ApproximatedAsBox = false,
+				CsgRotatable = false,
 			}
 		end
 		-- Foreign MeshPart: flippable with box behavior
@@ -68,6 +72,7 @@ local function identifyPart(part: Instance?): PartState?
 			IsMeshRepresentation = false,
 			PrimitiveOnly = true,
 			ApproximatedAsBox = true,
+			CsgRotatable = true,
 		}
 	end
 
@@ -85,6 +90,7 @@ local function identifyPart(part: Instance?): PartState?
 		IsMeshRepresentation = false,
 		PrimitiveOnly = part:FindFirstChildOfClass("SpecialMesh") ~= nil or approximated,
 		ApproximatedAsBox = approximated,
+		CsgRotatable = approximated and part:IsA("PartOperation"),
 	}
 end
 

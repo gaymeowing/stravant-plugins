@@ -16,6 +16,7 @@ local function makeTestSettings(): Settings.MaterialFlipSettings
 		PreserveDecals = false,
 		PreservePivot = false,
 		TargetLocked = false,
+		AllowMeshPartRotation = false,
 	}
 end
 

@@ -136,6 +136,32 @@ local function OptionsPanel(props: {
 				HelpRichText = "Allow hovering and flipping Locked parts.",
 			}),
 		}),
+		AllowMeshPartRotation = e(HelpGui.WithHelpIcon, {
+			LayoutOrder = 5,
+			Subject = e(Checkbox, {
+				Label = "Allow MeshPart Rotation",
+				Checked = props.Settings.AllowMeshPartRotation,
+				Changed = function(newValue: boolean)
+					props.Settings.AllowMeshPartRotation = newValue
+					props.UpdatedSettings()
+				end,
+			}),
+			Help = e(HelpGui.BasicTooltip, {
+				HelpRichText = "Enable material rotation for MeshParts using CSG. This will create unique meshes every time you use it costing significant performance!",
+			}),
+		}),
+		AllowMeshPartRotationWarning = props.Settings.AllowMeshPartRotation and e("TextLabel", {
+			LayoutOrder = 6,
+			Size = UDim2.fromScale(1, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			BackgroundTransparency = 1,
+			TextWrapped = true,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Font = Enum.Font.SourceSans,
+			TextSize = 16,
+			TextColor3 = Color3.fromRGB(255, 170, 60),
+			Text = "MeshPart rotation has performance implications.",
+		}),
 	})
 end
 
