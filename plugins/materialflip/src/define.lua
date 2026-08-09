@@ -5,6 +5,6 @@
 -- all the plugins packaged together.
 return {
 	PluginName = "MaterialFlip",
-	ButtonIcon = "rbxassetid://93351365168756",
+	ButtonIcon = "rbxassetid://117169183260691",
 	ButtonTooltip = "Click parts to \"rotate\" the direction that their material is pointing in without modifying their position or size.",
 }
