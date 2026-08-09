@@ -71,16 +71,18 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 	-- Front face direction indicator: an arrow out of the center of the
 	-- hovered part's front face, so you can see the current material
 	-- orientation before flipping it
-	-- Note: no AlwaysOnTop - HandleAdornments with it set don't render in
-	-- this context, and the arrow extends outside the part anyway
+	-- Note: XRay shading via the Shading property; the legacy AlwaysOnTop
+	-- property doesn't render at all in this context
 	local indicatorShaft = Instance.new("CylinderHandleAdornment")
 	indicatorShaft.Name = "MaterialFlipFrontShaft"
 	indicatorShaft.Color3 = kIndicatorColor
+	indicatorShaft.Shading = Enum.AdornShading.XRay
 	indicatorShaft.Parent = CoreGui
 
 	local indicatorCone = Instance.new("ConeHandleAdornment")
 	indicatorCone.Name = "MaterialFlipFrontCone"
 	indicatorCone.Color3 = kIndicatorColor
+	indicatorCone.Shading = Enum.AdornShading.XRay
 	indicatorCone.Parent = CoreGui
 
 	-- The label is adorned to Workspace itself, so StudsOffsetWorldSpace is
