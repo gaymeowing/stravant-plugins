@@ -56,8 +56,10 @@ return function(t: TestTypes.TestContext)
 			t.fail("Label offset in the wrong place: " .. tostring(label.StudsOffsetWorldSpace))
 		end
 
-		-- The rotation arc adorns the hovered part around the clicked face
-		t.expect(arc.Adornee).toBe(part)
+		-- The rotation arc draws in world space adorned to Terrain, positioned
+		-- at the hovered part's shape frame
+		t.expect(arc.Adornee).toBe(workspace.Terrain)
+		t.expect((arc.CFrame.Position - part.CFrame.Position).Magnitude < 0.001).toBeTruthy()
 
 		-- Visual check of the arc and arrow indicators
 		local camera = workspace.CurrentCamera
@@ -70,7 +72,6 @@ return function(t: TestTypes.TestContext)
 		t.expect(cone.Adornee).toBe(nil)
 		t.expect(shaft.Adornee).toBe(nil)
 		t.expect(label.Enabled).toBeFalsy()
-		t.expect(arc.Adornee).toBe(nil)
 
 		part:Destroy()
 		session.Destroy()

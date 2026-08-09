@@ -113,22 +113,22 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 	indicatorLabelText.Parent = indicatorLabel
 
 	-- Rotation arc: a circular arrow on the face that a click would rotate,
-	-- showing the rotate direction
+	-- showing the rotate direction. WireframeHandleAdornment draws in world
+	-- space regardless of its adornee, so it's adorned to Terrain and
+	-- positioned via its CFrame (world = shape frame).
 	local rotationArc = Instance.new("WireframeHandleAdornment")
 	rotationArc.Name = "MaterialFlipRotationArc"
 	rotationArc.Color3 = kIndicatorColor
 	rotationArc.Thickness = 3
+	rotationArc.Adornee = workspace.Terrain
 	rotationArc.Parent = CoreGui
 
-	local mArcPart: BasePart? = nil
 	local mArcKey = ""
 
 	local function clearRotationArc()
-		if mArcPart ~= nil or mArcKey ~= "" then
-			mArcPart = nil
+		if mArcKey ~= "" then
 			mArcKey = ""
 			rotationArc:Clear()
-			rotationArc.Adornee = nil
 		end
 	end
 
@@ -147,20 +147,17 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 
 		local face = pickRotationFace(state, worldPoint, worldNormal)
 		local clockwise = activeSettings.RotateDirection == "Clockwise"
-		-- The arc is drawn in the shape frame, which for mesh representations
-		-- differs from the part frame by the adornment CFrame offset
-		local shapeOffset = part.CFrame:Inverse() * state.ShapeCFrame
 		local key = string.format("%s|%s|%s|%s",
-			face.Name, tostring(clockwise), tostring(state.ShapeSize), tostring(shapeOffset))
-		if part == mArcPart and key == mArcKey then
+			face.Name, tostring(clockwise), tostring(state.ShapeSize), tostring(state.ShapeCFrame))
+		if key == mArcKey then
 			return
 		end
-		mArcPart = part
 		mArcKey = key
 
 		rotationArc:Clear()
-		rotationArc.Adornee = part
-		rotationArc.CFrame = shapeOffset
+		-- Adorned to Terrain (identity), so the adornment CFrame is the world
+		-- space shape frame and the arc geometry below is in shape space
+		rotationArc.CFrame = state.ShapeCFrame
 
 		-- Face plane basis: (u, v, n) right handed, so increasing angle is
 		-- counterclockwise as seen from outside the face
