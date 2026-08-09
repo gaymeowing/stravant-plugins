@@ -168,7 +168,9 @@ return function(t: TestTypes.TestContext)
 		-- Fourth flip returns to the primitive representation
 		local result = doFlip(current, sideClickPoint, sideClickNormal, kCW)
 		assert(result)
-		t.expect(result:IsA("WedgePart")).toBeTruthy()
+		-- Primitives come back as Part with Shape, not WedgePart
+		t.expect(result:IsA("Part")).toBeTruthy()
+		t.expect((result :: Part).Shape).toBe(Enum.PartType.Wedge)
 		expectVectorNear(result.Size, Vector3.new(2, 3, 4))
 		expectCFrameNear(result.CFrame, originalCFrame)
 		expectSameRegion(region, result)
@@ -261,7 +263,9 @@ return function(t: TestTypes.TestContext)
 		end
 		local result = doFlip(current, topPoint, Vector3.yAxis, kCW)
 		assert(result)
-		t.expect(result:IsA("CornerWedgePart")).toBeTruthy()
+		-- Primitives come back as Part with Shape, not CornerWedgePart
+		t.expect(result:IsA("Part")).toBeTruthy()
+		t.expect((result :: Part).Shape).toBe(Enum.PartType.CornerWedge)
 		expectCFrameNear(result.CFrame, originalCFrame)
 		expectVectorNear(result.Size, Vector3.new(2, 3, 4))
 

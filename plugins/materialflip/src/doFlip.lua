@@ -62,20 +62,19 @@ local kSurfaceProps: {[Enum.NormalId]: string} = {
 	[Enum.NormalId.Front] = "FrontSurface",
 }
 
+-- Always a Part with the appropriate Shape (not WedgePart/CornerWedgePart)
 local function createPrimitive(shape: ShapeData.ShapeName): BasePart
+	local part = Instance.new("Part")
 	if shape == "Wedge" then
-		return Instance.new("WedgePart")
+		part.Shape = Enum.PartType.Wedge
 	elseif shape == "CornerWedge" then
-		return Instance.new("CornerWedgePart")
-	else
-		local part = Instance.new("Part")
-		if shape == "Cylinder" then
-			part.Shape = Enum.PartType.Cylinder
-		elseif shape == "Ball" then
-			part.Shape = Enum.PartType.Ball
-		end
-		return part
+		part.Shape = Enum.PartType.CornerWedge
+	elseif shape == "Cylinder" then
+		part.Shape = Enum.PartType.Cylinder
+	elseif shape == "Ball" then
+		part.Shape = Enum.PartType.Ball
 	end
+	return part
 end
 
 -- Permute the surface type properties so each world-space face keeps its
