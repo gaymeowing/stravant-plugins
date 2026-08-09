@@ -648,34 +648,66 @@ return function(t: TestTypes.TestContext)
 
 		local result = doFlip(foreign, foreign.Position + Vector3.new(0, 1.5, 0), Vector3.yAxis, csgOptions)
 		assert(result, "expected a CSG flip result")
-		-- The CSG result replaces the part (UnionAsync returns a MeshPart when
-		-- a MeshPart is an operand, a UnionOperation otherwise)
-		t.expect(result == foreign).toBeFalsy()
-		t.expect(result.Parent).toBe(workspace)
-		t.expect(foreign.Parent).toBe(nil) -- replaced, not destroyed
-		-- Colors survive: the inputs are whitened during the union (the CSG
-		-- API bakes input colors into vertex colors) and restored after
-		t.expect(result.Color).toBe(Color3.fromRGB(120, 40, 200))
+		-- MeshParts get the rotated mesh applied back in place via ApplyMesh:
+		-- same instance, no swap, and the color is untouched (the union runs
+		-- on a whitened clone because the CSG API bakes input colors into
+		-- vertex colors)
+		t.expect(result).toBe(foreign)
+		t.expect(foreign.Parent).toBe(workspace)
 		t.expect(foreign.Color).toBe(Color3.fromRGB(120, 40, 200))
 
 		-- Frame rotated a quarter turn about Y at the same position: the
 		-- geometry stays put while the material frame turns
 		local expected = before * Orientation.getCFrame(Orientation.quarterTurnAbout(Enum.NormalId.Top, true))
-		expectVectorNear(result.CFrame.Position, before.Position)
-		expectVectorNear(result.CFrame.XVector, expected.XVector)
-		expectVectorNear(result.CFrame.YVector, expected.YVector)
+		expectVectorNear(foreign.CFrame.Position, before.Position)
+		expectVectorNear(foreign.CFrame.XVector, expected.XVector)
+		expectVectorNear(foreign.CFrame.YVector, expected.YVector)
 
-		-- The result stays CSG rotatable on further flips
-		local state = identifyPart(result)
+		-- Still CSG rotatable on further flips
+		local state = identifyPart(foreign)
 		assert(state)
 		t.expect(state.CsgRotatable).toBeTruthy()
-		local result2 = doFlip(result, result.CFrame.Position + Vector3.new(0, 1.5, 0), Vector3.yAxis, csgOptions)
-		assert(result2, "expected a second CSG flip result")
-		t.expect(result2 == result).toBeFalsy()
+		local result2 = doFlip(foreign, foreign.CFrame.Position + Vector3.new(0, 1.5, 0), Vector3.yAxis, csgOptions)
+		t.expect(result2).toBe(foreign)
 
-		result2:Destroy()
-		result:Destroy()
 		foreign:Destroy()
+	end)
+
+	t.test("Allow MeshPart Rotation swaps unions for rotated unions", function()
+		local GeometryService = game:GetService("GeometryService")
+		local csgOptions: doFlip.FlipOptions = {
+			Clockwise = true,
+			PreserveAttachments = true,
+			PreserveDecals = false,
+			PreservePivot = false,
+			AllowMeshPartRotation = true,
+		}
+		-- Build a real UnionOperation to flip
+		local a = Instance.new("Part")
+		a.Size = Vector3.new(4, 1, 4)
+		a.CFrame = CFrame.new(0, 70, 0)
+		local b = Instance.new("Part")
+		b.Size = Vector3.new(1, 4, 1)
+		b.CFrame = CFrame.new(0, 71, 0)
+		local union = GeometryService:UnionAsync(a, {b})[1] :: BasePart
+		a:Destroy()
+		b:Destroy()
+		union.Anchored = true
+		union.Parent = workspace
+		local before = union.CFrame
+
+		local result = doFlip(union, union.CFrame.Position + Vector3.new(0, 2, 0), Vector3.yAxis, csgOptions)
+		assert(result, "expected a CSG flip result")
+		-- Unions can't ApplyMesh, so the rotated union is swapped in
+		t.expect(result == union).toBeFalsy()
+		t.expect(result.Parent).toBe(workspace)
+		t.expect(union.Parent).toBe(nil) -- replaced, not destroyed
+		local expected = before * Orientation.getCFrame(Orientation.quarterTurnAbout(Enum.NormalId.Top, true))
+		expectVectorNear(result.CFrame.Position, before.Position)
+		expectVectorNear(result.CFrame.XVector, expected.XVector)
+
+		result:Destroy()
+		union:Destroy()
 	end)
 
 	t.test("SpecialMesh parts only flip within their primitive's symmetries", function()

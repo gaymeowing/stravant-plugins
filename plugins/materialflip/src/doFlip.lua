@@ -179,42 +179,59 @@ local function doFlip(part: BasePart, worldPoint: Vector3, worldNormal: Vector3,
 	end
 
 	if state.ApproximatedAsBox and state.CsgRotatable and options.AllowMeshPartRotation then
-		-- CSG path: rebuild the part as a union whose first input carries the
-		-- rotated material frame (a tiny helper part hidden at the center).
-		-- The union's geometry stays exactly where it was while its local
-		-- frame - and therefore its material - takes the quarter turn.
+		-- CSG path: union a clone of the part with a tiny helper part that
+		-- goes first and carries the rotated material frame - the CSG
+		-- result's local frame (and therefore its material) comes from the
+		-- first input while the geometry stays exactly in place. Operating on
+		-- a clone keeps the live part untouched while the async union runs
+		-- (no flicker), and the inputs are whitened because the CSG API bakes
+		-- input colors into vertex colors, which would darken a colored part
+		-- a bit more on every flip.
 		local helper = Instance.new("Part")
 		helper.Size = Vector3.new(0.05, 0.05, 0.05)
 		helper.CFrame = newCFrame
-		-- The CSG API bakes the input part colors into the result's vertex
-		-- colors, so any non-white color would darken the part a bit more on
-		-- every flip: union with pure white inputs and restore afterward
 		helper.Color = Color3.new(1, 1, 1)
-		local savedColor = part.Color
-		part.Color = Color3.new(1, 1, 1)
+		local wasArchivable = part.Archivable
+		part.Archivable = true
+		local clone = part:Clone()
+		part.Archivable = wasArchivable
+		clone:ClearAllChildren()
+		clone.Color = Color3.new(1, 1, 1)
 		local ok, unionResults = pcall(function()
-			return GeometryService:UnionAsync(helper, {part})
+			return GeometryService:UnionAsync(helper, {clone})
 		end)
-		part.Color = savedColor
 		helper:Destroy()
-		local replacement = if ok and type(unionResults) == "table" and unionResults[1]
+		clone:Destroy()
+		local unioned = if ok and type(unionResults) == "table" and unionResults[1]
 			then unionResults[1] :: BasePart
 			else nil
-		if not replacement then
+		if not unioned then
 			warn("MaterialFlip: CSG rotation failed: " .. tostring(if ok then "no result" else unionResults))
 			if recording then
 				ChangeHistoryService:FinishRecording(recording, Enum.FinishRecordingOperation.Cancel)
 			end
 			return nil
 		end
-		assert(replacement)
-		copyPartProps(part, replacement)
-		if replacement:IsA("UnionOperation") then
-			replacement.UsePartColor = true
+		assert(unioned)
+		if part:IsA("MeshPart") and unioned:IsA("MeshPart") then
+			-- Apply the rotated mesh back onto the live part in place: no
+			-- instance swap at all (UnionAsync returns a MeshPart when a
+			-- MeshPart is an operand)
+			part:BreakJoints()
+			part:ApplyMesh(unioned)
+			part.Size = unioned.Size
+			part.CFrame = newCFrame
+			unioned:Destroy()
+			result = part
+		else
+			-- Union operands produce a UnionOperation, which can't ApplyMesh:
+			-- swap it in. Its geometry and CFrame are already baked in place.
+			copyPartProps(part, unioned)
+			if unioned:IsA("UnionOperation") then
+				unioned.UsePartColor = true
+			end
+			swapIn(unioned)
 		end
-		-- The union's geometry and CFrame are already baked in place: don't
-		-- set Size or CFrame
-		swapIn(replacement)
 	elseif sameRepresentation then
 		-- Update in place
 		part:BreakJoints()
