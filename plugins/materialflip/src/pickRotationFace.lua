@@ -25,6 +25,23 @@ local kCameraBias = 0.05
 local function pickRotationFace(state: identifyPart.PartState, worldPoint: Vector3, worldNormal: Vector3): Enum.NormalId
 	local localNormal = state.ShapeCFrame:VectorToObjectSpace(worldNormal)
 
+	-- Special case: the sloped face of a wedge. Plain alignment scoring picks
+	-- Top for the common long-squat wedge, but a slope click means "change
+	-- which way the material runs on the slope", and the rotation that does
+	-- that is the one about the axis MORE PARALLEL to the slope surface:
+	-- the Front/Back axis for squat wedges, the Top/Bottom axis for tall
+	-- ones. Stated on the region's geometry (not a fixed local axis), this
+	-- stays well defined after flips, when the recovered shape frame is only
+	-- unique up to the wedge's symmetry (which exchanges the two axes).
+	if state.Shape == "Wedge" then
+		local slopeNormal = Vector3.new(0, state.ShapeSize.Z, -state.ShapeSize.Y)
+		if slopeNormal.Magnitude > 0.001 and localNormal:Dot(slopeNormal.Unit) > 0.99 then
+			return if math.abs(localNormal.Y) >= math.abs(localNormal.Z)
+				then Enum.NormalId.Front
+				else Enum.NormalId.Top
+		end
+	end
+
 	local localToCamera = Vector3.zero
 	local camera = workspace.CurrentCamera
 	if camera then

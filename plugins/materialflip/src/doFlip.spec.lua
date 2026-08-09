@@ -189,7 +189,8 @@ return function(t: TestTypes.TestContext)
 			w.Parent = workspace
 			return w
 		end
-		-- Slope normal for size (2, 3, 5) is (0, 5, -3).Unit: leans Top
+		-- Slope normal for size (2, 3, 5) is (0, 5, -3).Unit: the slope
+		-- special case sends both clicks to the Front axis
 		local slopeNormal = Vector3.new(0, 5, -3).Unit
 
 		local a = makeWedge()
