@@ -7,13 +7,49 @@ local TestHelpers = require("./TestHelpers")
 local createMaterialFlipSession = require("./createMaterialFlipSession")
 
 return function(t: TestTypes.TestContext)
-	t.test("creates and destroys cleanly, managing its highlight", function()
+	t.test("creates and destroys cleanly, managing its highlight and indicator", function()
 		local session = createMaterialFlipSession(TestHelpers.makeTestSettings())
 		t.expect(session.GetHoverPart()).toBe(nil)
 		t.expect(CoreGui:FindFirstChild("MaterialFlipHighlight")).toBeTruthy()
+		t.expect(CoreGui:FindFirstChild("MaterialFlipFrontShaft")).toBeTruthy()
+		t.expect(CoreGui:FindFirstChild("MaterialFlipFrontCone")).toBeTruthy()
+		t.expect(CoreGui:FindFirstChild("MaterialFlipFrontLabel")).toBeTruthy()
 
 		session.Destroy()
 		t.expect(CoreGui:FindFirstChild("MaterialFlipHighlight")).toBeFalsy()
+		t.expect(CoreGui:FindFirstChild("MaterialFlipFrontShaft")).toBeFalsy()
+		t.expect(CoreGui:FindFirstChild("MaterialFlipFrontCone")).toBeFalsy()
+		t.expect(CoreGui:FindFirstChild("MaterialFlipFrontLabel")).toBeFalsy()
+	end)
+
+	t.test("hover shows the front face indicator on the hovered part", function()
+		local session = createMaterialFlipSession(TestHelpers.makeTestSettings())
+
+		local part = Instance.new("Part")
+		part.Anchored = true
+		part.Size = Vector3.new(4, 4, 6)
+		part.Parent = workspace
+
+		session.TestSetHover(part)
+		local cone = CoreGui:FindFirstChild("MaterialFlipFrontCone") :: ConeHandleAdornment
+		local shaft = CoreGui:FindFirstChild("MaterialFlipFrontShaft") :: CylinderHandleAdornment
+		t.expect(cone.Adornee).toBe(part)
+		t.expect(shaft.Adornee).toBe(part)
+		-- The arrow comes out of the front (-Z) face
+		if cone.CFrame.Position.Z >= -part.Size.Z / 2 then
+			t.fail("Cone should be beyond the front face, got " .. tostring(cone.CFrame.Position))
+		end
+		-- And points outward: the adornment's +Z is the part's -Z
+		if (cone.CFrame.ZVector - Vector3.new(0, 0, -1)).Magnitude > 0.001 then
+			t.fail("Cone should point out the front, got " .. tostring(cone.CFrame.ZVector))
+		end
+
+		session.TestSetHover(nil)
+		t.expect(cone.Adornee).toBe(nil)
+		t.expect(shaft.Adornee).toBe(nil)
+
+		part:Destroy()
+		session.Destroy()
 	end)
 
 	t.test("TestClick flips a flippable part and skips a locked one", function()

@@ -18,7 +18,10 @@ export type MaterialFlipSession = {
 	Update: () -> (),
 	Destroy: () -> (),
 	TestClick: (part: BasePart, point: Vector3) -> BasePart?,
+	TestSetHover: (part: BasePart?) -> (),
 }
+
+local kIndicatorColor = Color3.fromRGB(255, 140, 0)
 
 -- Raycast the mouse into the scene, returning the hit part and hit point.
 -- Which bounding box face the click acts on is determined by doFlip from the
@@ -65,12 +68,78 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 	highlight.OutlineColor = (settings().Studio :: any)["Select Color"]
 	highlight.Parent = CoreGui
 
+	-- Front face direction indicator: an arrow out of the center of the
+	-- hovered part's front face, so you can see the current material
+	-- orientation before flipping it
+	-- Note: no AlwaysOnTop - HandleAdornments with it set don't render in
+	-- this context, and the arrow extends outside the part anyway
+	local indicatorShaft = Instance.new("CylinderHandleAdornment")
+	indicatorShaft.Name = "MaterialFlipFrontShaft"
+	indicatorShaft.Color3 = kIndicatorColor
+	indicatorShaft.Parent = CoreGui
+
+	local indicatorCone = Instance.new("ConeHandleAdornment")
+	indicatorCone.Name = "MaterialFlipFrontCone"
+	indicatorCone.Color3 = kIndicatorColor
+	indicatorCone.Parent = CoreGui
+
+	local indicatorLabel = Instance.new("BillboardGui")
+	indicatorLabel.Name = "MaterialFlipFrontLabel"
+	indicatorLabel.Size = UDim2.fromOffset(60, 18)
+	indicatorLabel.AlwaysOnTop = true
+	indicatorLabel.Enabled = false
+	indicatorLabel.Parent = CoreGui
+	local indicatorLabelText = Instance.new("TextLabel")
+	indicatorLabelText.BackgroundTransparency = 1
+	indicatorLabelText.Size = UDim2.fromScale(1, 1)
+	indicatorLabelText.Font = Enum.Font.SourceSansBold
+	indicatorLabelText.TextSize = 16
+	indicatorLabelText.TextColor3 = kIndicatorColor
+	indicatorLabelText.TextStrokeColor3 = Color3.new(0, 0, 0)
+	indicatorLabelText.TextStrokeTransparency = 0.4
+	indicatorLabelText.Text = "Front"
+	indicatorLabelText.Parent = indicatorLabel
+
+	-- Sized/positioned from the hovered part every frame since flips can
+	-- change the part's size while it stays hovered
+	local function updateFrontIndicator()
+		local part = mHoverPart
+		if not part then
+			indicatorShaft.Adornee = nil
+			indicatorCone.Adornee = nil
+			indicatorLabel.Adornee = nil
+			indicatorLabel.Enabled = false
+			return
+		end
+		assert(part)
+		local size = part.Size
+		local length = math.clamp(math.min(size.X, size.Y, size.Z) * 0.75, 1.5, 6)
+		local coneLength = length * 0.45
+		local shaftLength = length - coneLength
+		local halfZ = size.Z / 2
+		-- Adornment CFrames are in the adornee's local space; rotate so the
+		-- adornment's +Z points out of the part's front (-Z) face
+		local outward = CFrame.Angles(0, math.pi, 0)
+		indicatorShaft.Height = shaftLength
+		indicatorShaft.Radius = math.clamp(length * 0.05, 0.05, 0.25)
+		indicatorShaft.CFrame = CFrame.new(0, 0, -(halfZ + shaftLength / 2)) * outward
+		indicatorCone.Height = coneLength
+		indicatorCone.Radius = math.clamp(length * 0.14, 0.12, 0.7)
+		indicatorCone.CFrame = CFrame.new(0, 0, -(halfZ + shaftLength)) * outward
+		indicatorLabel.StudsOffset = Vector3.new(0, 0, -(halfZ + length + 0.7))
+		indicatorShaft.Adornee = part
+		indicatorCone.Adornee = part
+		indicatorLabel.Adornee = part
+		indicatorLabel.Enabled = true
+	end
+
 	local function setHoverPart(part: BasePart?)
 		if part ~= mHoverPart then
 			mHoverPart = part
 			highlight.Adornee = part
 			changeSignal:Fire()
 		end
+		updateFrontIndicator()
 	end
 
 	local function updateHover()
@@ -118,6 +187,9 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 			table.clear(connections)
 			task.cancel(hoverThread)
 			highlight:Destroy()
+			indicatorShaft:Destroy()
+			indicatorCone:Destroy()
+			indicatorLabel:Destroy()
 			mHoverPart = nil
 		end,
 		TestClick = function(part: BasePart, point: Vector3): BasePart?
@@ -125,6 +197,9 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 				return doFlip(part, point, activeSettings.RotateDirection == "Clockwise")
 			end
 			return nil
+		end,
+		TestSetHover = function(part: BasePart?)
+			setHoverPart(part)
 		end,
 	}
 	return session
