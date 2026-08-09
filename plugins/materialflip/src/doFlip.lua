@@ -62,7 +62,10 @@ local kSurfaceProps: {[Enum.NormalId]: string} = {
 	[Enum.NormalId.Front] = "FrontSurface",
 }
 
--- Always a Part with the appropriate Shape (not WedgePart/CornerWedgePart)
+-- Always a Part with the appropriate Shape, never the legacy WedgePart /
+-- CornerWedgePart classes. This means a legacy wedge that round trips
+-- through a mesh representation comes back "upgraded" to a modern
+-- Part + Shape, which is desirable behavior.
 local function createPrimitive(shape: ShapeData.ShapeName): BasePart
 	local part = Instance.new("Part")
 	if shape == "Wedge" then
