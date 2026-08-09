@@ -10,6 +10,8 @@ local Signal = require(Packages.Signal)
 
 local canFlip = require("./canFlip")
 local doFlip = require("./doFlip")
+local identifyPart = require("./identifyPart")
+local pickRotationFace = require("./pickRotationFace")
 local preloadMeshRepresentations = require("./preloadMeshRepresentations")
 local Settings = require("./Settings")
 
@@ -18,20 +20,19 @@ export type MaterialFlipSession = {
 	GetHoverPart: () -> BasePart?,
 	Update: () -> (),
 	Destroy: () -> (),
-	TestClick: (part: BasePart, point: Vector3) -> BasePart?,
-	TestSetHover: (part: BasePart?) -> (),
+	TestClick: (part: BasePart, point: Vector3, normal: Vector3) -> BasePart?,
+	TestSetHover: (part: BasePart?, point: Vector3?, normal: Vector3?) -> (),
 }
 
 local kIndicatorColor = Color3.fromRGB(255, 140, 0)
 
--- Raycast the mouse into the scene, returning the hit part and hit point.
--- Which bounding box face the click acts on is determined by doFlip from the
--- hit point, in the shape's frame (not the raw hit surface, which matters
--- for curved and mesh-represented parts).
-local function getTarget(): (BasePart?, Vector3)
+-- Raycast the mouse into the scene, returning the hit part, hit point, and
+-- hit normal. Which bounding box face the click acts on is determined by
+-- pickRotationFace from the hit point and normal in the shape's frame.
+local function getTarget(): (BasePart?, Vector3, Vector3)
 	local camera = workspace.CurrentCamera
 	if not camera then
-		return nil, Vector3.zero
+		return nil, Vector3.zero, Vector3.yAxis
 	end
 
 	local mouseLocation = UserInputService:GetMouseLocation()
@@ -44,15 +45,15 @@ local function getTarget(): (BasePart?, Vector3)
 
 	local result = workspace:Raycast(ray.Origin, ray.Direction * 9999, raycastParams)
 	if not result then
-		return nil, Vector3.zero
+		return nil, Vector3.zero, Vector3.yAxis
 	end
 
 	local hit = result.Instance
 	if not hit:IsA("BasePart") then
-		return nil, Vector3.zero
+		return nil, Vector3.zero, Vector3.yAxis
 	end
 
-	return hit, result.Position
+	return hit, result.Position, result.Normal
 end
 
 local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSettings): MaterialFlipSession
@@ -111,6 +112,88 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 	indicatorLabelText.Text = "Front"
 	indicatorLabelText.Parent = indicatorLabel
 
+	-- Rotation arc: a circular arrow on the face that a click would rotate,
+	-- showing the rotate direction
+	local rotationArc = Instance.new("WireframeHandleAdornment")
+	rotationArc.Name = "MaterialFlipRotationArc"
+	rotationArc.Color3 = kIndicatorColor
+	rotationArc.Thickness = 3
+	rotationArc.Parent = CoreGui
+
+	local mArcPart: BasePart? = nil
+	local mArcKey = ""
+
+	local function clearRotationArc()
+		if mArcPart ~= nil or mArcKey ~= "" then
+			mArcPart = nil
+			mArcKey = ""
+			rotationArc:Clear()
+			rotationArc.Adornee = nil
+		end
+	end
+
+	local function updateRotationArc(part: BasePart?, worldPoint: Vector3?, worldNormal: Vector3?)
+		if not part or not worldPoint or not worldNormal then
+			clearRotationArc()
+			return
+		end
+		assert(part and worldPoint and worldNormal)
+		local state = identifyPart(part)
+		if not state then
+			clearRotationArc()
+			return
+		end
+		assert(state)
+
+		local face = pickRotationFace(state, worldPoint, worldNormal)
+		local clockwise = activeSettings.RotateDirection == "Clockwise"
+		-- The arc is drawn in the shape frame, which for mesh representations
+		-- differs from the part frame by the adornment CFrame offset
+		local shapeOffset = part.CFrame:Inverse() * state.ShapeCFrame
+		local key = string.format("%s|%s|%s|%s",
+			face.Name, tostring(clockwise), tostring(state.ShapeSize), tostring(shapeOffset))
+		if part == mArcPart and key == mArcKey then
+			return
+		end
+		mArcPart = part
+		mArcKey = key
+
+		rotationArc:Clear()
+		rotationArc.Adornee = part
+		rotationArc.CFrame = shapeOffset
+
+		-- Face plane basis: (u, v, n) right handed, so increasing angle is
+		-- counterclockwise as seen from outside the face
+		local n = Vector3.fromNormalId(face)
+		local u = if math.abs(n.Y) > 0.5 then Vector3.zAxis else Vector3.yAxis
+		local v = n:Cross(u).Unit
+		u = v:Cross(n)
+
+		local half = state.ShapeSize / 2
+		local center = n * ((half * n):Dot(n) + 0.05)
+		local sizeU = (state.ShapeSize * u):Dot(u)
+		local sizeV = (state.ShapeSize * v):Dot(v)
+		local radius = math.clamp(0.35 * math.min(sizeU, sizeV), 0.2, 5)
+		local dirSign = if clockwise then -1 else 1
+
+		local points = {}
+		local startDeg, endDeg = 20, 300
+		for deg = startDeg, endDeg, 14 do
+			local theta = math.rad(deg * dirSign)
+			table.insert(points, center + radius * (math.cos(theta) * u + math.sin(theta) * v))
+		end
+		rotationArc:AddPath(points, false)
+
+		-- Arrowhead at the end of the arc
+		local thetaEnd = math.rad(endDeg * dirSign)
+		local radial = math.cos(thetaEnd) * u + math.sin(thetaEnd) * v
+		local tangent = dirSign * (-math.sin(thetaEnd) * u + math.cos(thetaEnd) * v)
+		local tip = center + radius * radial
+		local headLen = radius * 0.35
+		rotationArc:AddLine(tip, tip - tangent * headLen + radial * headLen * 0.5)
+		rotationArc:AddLine(tip, tip - tangent * headLen - radial * headLen * 0.5)
+	end
+
 	-- Sized/positioned from the hovered part every frame since flips can
 	-- change the part's size while it stays hovered
 	local function updateFrontIndicator()
@@ -153,8 +236,14 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 	end
 
 	local function updateHover()
-		local hit = getTarget()
-		setHoverPart(if hit and canFlip(hit) then hit else nil)
+		local hit, at, normal = getTarget()
+		if hit and canFlip(hit) then
+			setHoverPart(hit)
+			updateRotationArc(hit, at, normal)
+		else
+			setHoverPart(nil)
+			updateRotationArc(nil)
+		end
 	end
 
 	table.insert(connections, UserInputService.InputBegan:Connect(function(input: InputObject, gameProcessed: boolean)
@@ -162,9 +251,9 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 		if mDestroyed then return end
 
 		if input.UserInputType == Enum.UserInputType.MouseButton1 then
-			local hit, at = getTarget()
+			local hit, at, normal = getTarget()
 			if hit and canFlip(hit) then
-				local result = doFlip(hit, at, activeSettings.RotateDirection == "Clockwise")
+				local result = doFlip(hit, at, normal, activeSettings.RotateDirection == "Clockwise")
 				if result then
 					setHoverPart(result)
 				end
@@ -200,16 +289,18 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 			indicatorShaft:Destroy()
 			indicatorCone:Destroy()
 			indicatorLabel:Destroy()
+			rotationArc:Destroy()
 			mHoverPart = nil
 		end,
-		TestClick = function(part: BasePart, point: Vector3): BasePart?
+		TestClick = function(part: BasePart, point: Vector3, normal: Vector3): BasePart?
 			if canFlip(part) then
-				return doFlip(part, point, activeSettings.RotateDirection == "Clockwise")
+				return doFlip(part, point, normal, activeSettings.RotateDirection == "Clockwise")
 			end
 			return nil
 		end,
-		TestSetHover = function(part: BasePart?)
+		TestSetHover = function(part: BasePart?, point: Vector3?, normal: Vector3?)
 			setHoverPart(part)
+			updateRotationArc(part, point, normal)
 		end,
 	}
 	return session

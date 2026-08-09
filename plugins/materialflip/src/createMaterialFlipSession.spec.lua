@@ -14,12 +14,14 @@ return function(t: TestTypes.TestContext)
 		t.expect(CoreGui:FindFirstChild("MaterialFlipFrontShaft")).toBeTruthy()
 		t.expect(CoreGui:FindFirstChild("MaterialFlipFrontCone")).toBeTruthy()
 		t.expect(CoreGui:FindFirstChild("MaterialFlipFrontLabel")).toBeTruthy()
+		t.expect(CoreGui:FindFirstChild("MaterialFlipRotationArc")).toBeTruthy()
 
 		session.Destroy()
 		t.expect(CoreGui:FindFirstChild("MaterialFlipHighlight")).toBeFalsy()
 		t.expect(CoreGui:FindFirstChild("MaterialFlipFrontShaft")).toBeFalsy()
 		t.expect(CoreGui:FindFirstChild("MaterialFlipFrontCone")).toBeFalsy()
 		t.expect(CoreGui:FindFirstChild("MaterialFlipFrontLabel")).toBeFalsy()
+		t.expect(CoreGui:FindFirstChild("MaterialFlipRotationArc")).toBeFalsy()
 	end)
 
 	t.test("hover shows the front face indicator on the hovered part", function()
@@ -30,10 +32,11 @@ return function(t: TestTypes.TestContext)
 		part.Size = Vector3.new(4, 4, 6)
 		part.Parent = workspace
 
-		session.TestSetHover(part)
+		session.TestSetHover(part, part.Position + Vector3.new(0, 2, 0), Vector3.yAxis)
 		local cone = CoreGui:FindFirstChild("MaterialFlipFrontCone") :: ConeHandleAdornment
 		local shaft = CoreGui:FindFirstChild("MaterialFlipFrontShaft") :: CylinderHandleAdornment
 		local label = CoreGui:FindFirstChild("MaterialFlipFrontLabel") :: BillboardGui
+		local arc = CoreGui:FindFirstChild("MaterialFlipRotationArc") :: WireframeHandleAdornment
 		t.expect(cone.Adornee).toBe(part)
 		t.expect(shaft.Adornee).toBe(part)
 		-- The arrow comes out of the front (-Z) face: the cone's base sits
@@ -53,10 +56,21 @@ return function(t: TestTypes.TestContext)
 			t.fail("Label offset in the wrong place: " .. tostring(label.StudsOffsetWorldSpace))
 		end
 
+		-- The rotation arc adorns the hovered part around the clicked face
+		t.expect(arc.Adornee).toBe(part)
+
+		-- Visual check of the arc and arrow indicators
+		local camera = workspace.CurrentCamera
+		if camera then
+			camera.CFrame = CFrame.lookAt(part.Position + Vector3.new(5, 9, -9), part.Position)
+		end
+		t.screenshot("rotation_arc_hover")
+
 		session.TestSetHover(nil)
 		t.expect(cone.Adornee).toBe(nil)
 		t.expect(shaft.Adornee).toBe(nil)
 		t.expect(label.Enabled).toBeFalsy()
+		t.expect(arc.Adornee).toBe(nil)
 
 		part:Destroy()
 		session.Destroy()
@@ -69,7 +83,7 @@ return function(t: TestTypes.TestContext)
 		part.Anchored = true
 		part.Size = Vector3.new(1, 2, 3)
 		part.Parent = workspace
-		local result = session.TestClick(part, part.Position + Vector3.new(0, 1, 0))
+		local result = session.TestClick(part, part.Position + Vector3.new(0, 1, 0), Vector3.yAxis)
 		if result ~= part then
 			t.fail("Expected an in-place flip")
 		end
@@ -83,7 +97,7 @@ return function(t: TestTypes.TestContext)
 		locked.Locked = true
 		locked.Size = Vector3.new(1, 2, 3)
 		locked.Parent = workspace
-		local lockedResult = session.TestClick(locked, locked.Position + Vector3.new(0, 1, 0))
+		local lockedResult = session.TestClick(locked, locked.Position + Vector3.new(0, 1, 0), Vector3.yAxis)
 		if lockedResult ~= nil then
 			t.fail("Expected locked part to be skipped")
 		end

@@ -19,6 +19,7 @@ local Selection = game:GetService("Selection")
 local Orientation = require("./Orientation")
 local ShapeData = require("./ShapeData")
 local identifyPart = require("./identifyPart")
+local pickRotationFace = require("./pickRotationFace")
 local getMeshRepresentation = require("./getMeshRepresentation")
 local copyPartProps = require("./copyPartProps")
 
@@ -30,29 +31,6 @@ local kSurfaceProps: {[Enum.NormalId]: string} = {
 	[Enum.NormalId.Back] = "BackSurface",
 	[Enum.NormalId.Front] = "FrontSurface",
 }
-
--- The bounding box face of the shape frame closest to the given world point
-local function closestBoxFace(state: identifyPart.PartState, worldPoint: Vector3): Enum.NormalId
-	local localPoint = state.ShapeCFrame:PointToObjectSpace(worldPoint)
-	local half = state.ShapeSize / 2
-	local best = math.huge
-	local bestFace = Enum.NormalId.Top
-	local candidates: {{face: Enum.NormalId, dist: number}} = {
-		{face = Enum.NormalId.Right, dist = math.abs(localPoint.X - half.X)},
-		{face = Enum.NormalId.Left, dist = math.abs(localPoint.X + half.X)},
-		{face = Enum.NormalId.Top, dist = math.abs(localPoint.Y - half.Y)},
-		{face = Enum.NormalId.Bottom, dist = math.abs(localPoint.Y + half.Y)},
-		{face = Enum.NormalId.Back, dist = math.abs(localPoint.Z - half.Z)},
-		{face = Enum.NormalId.Front, dist = math.abs(localPoint.Z + half.Z)},
-	}
-	for _, candidate in candidates do
-		if candidate.dist < best then
-			best = candidate.dist
-			bestFace = candidate.face
-		end
-	end
-	return bestFace
-end
 
 local function createPrimitive(shape: ShapeData.ShapeName): BasePart
 	if shape == "Wedge" then
@@ -84,14 +62,14 @@ end
 
 -- Returns the part representing the result (the same part if updated in
 -- place), or nil if the part isn't flippable or the flip isn't representable.
-local function doFlip(part: BasePart, worldPoint: Vector3, clockwise: boolean): BasePart?
+local function doFlip(part: BasePart, worldPoint: Vector3, worldNormal: Vector3, clockwise: boolean): BasePart?
 	local state = identifyPart(part)
 	if not state then
 		return nil
 	end
 	assert(state)
 
-	local face = closestBoxFace(state, worldPoint)
+	local face = pickRotationFace(state, worldPoint, worldNormal)
 	local r = Orientation.quarterTurnAbout(face, clockwise)
 	local newM = Orientation.compose(r, state.Orientation)
 
