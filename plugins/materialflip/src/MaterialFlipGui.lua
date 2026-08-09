@@ -16,6 +16,12 @@ local PluginGuiTypes = require("./PluginGui/Types")
 
 local e = React.createElement
 
+-- Temporarily hidden: the results of unioning MeshParts don't save with the
+-- place yet, so there's no way to enable Allow MeshPart Rotation. The whole
+-- codepath is kept; flip this to true to restore the option once CSG mesh
+-- results persist.
+local kShowMeshPartRotationSetting = false
+
 local function createNextOrder()
 	local order = 0
 	return function()
@@ -136,7 +142,7 @@ local function OptionsPanel(props: {
 				HelpRichText = "Allow hovering and flipping Locked parts.",
 			}),
 		}),
-		AllowMeshPartRotation = e(HelpGui.WithHelpIcon, {
+		AllowMeshPartRotation = kShowMeshPartRotationSetting and e(HelpGui.WithHelpIcon, {
 			LayoutOrder = 5,
 			Subject = e(Checkbox, {
 				Label = "Allow MeshPart Rotation",
@@ -150,7 +156,7 @@ local function OptionsPanel(props: {
 				HelpRichText = "Enable material rotation for MeshParts using CSG. This will create unique meshes every time you use it costing significant performance!",
 			}),
 		}),
-		AllowMeshPartRotationWarning = props.Settings.AllowMeshPartRotation and e("TextLabel", {
+		AllowMeshPartRotationWarning = kShowMeshPartRotationSetting and props.Settings.AllowMeshPartRotation and e("TextLabel", {
 			LayoutOrder = 6,
 			Size = UDim2.fromScale(1, 0),
 			AutomaticSize = Enum.AutomaticSize.Y,
