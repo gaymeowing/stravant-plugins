@@ -253,6 +253,21 @@ local function doFlip(part: BasePart, worldPoint: Vector3, worldNormal: Vector3,
 				-- Legacy FormFactor parts can't freely resize without this
 				(part :: any).FormFactor = Enum.FormFactor.Custom
 			end)
+			if not state.ApproximatedAsBox then
+				-- Primitive-shaped SpecialMeshes (oval cylinders,
+				-- ellipsoids...) render relative to the part's local axes, so
+				-- their Scale must permute like the Size and their Offset
+				-- must counter-rotate for the rendered solid to keep
+				-- occupying the same region. (Approximated meshes like
+				-- FileMesh rotate rigidly with the part instead, so theirs
+				-- are left alone.)
+				for _, child in part:GetChildren() do
+					if child:IsA("SpecialMesh") then
+						child.Scale = Orientation.permuteSize(Orientation.invert(newM), child.Scale)
+						child.Offset = Orientation.getCFrame(Orientation.invert(newM)):VectorToWorldSpace(child.Offset)
+					end
+				end
+			end
 		end
 		part.Size = newSize
 		part:BreakJoints() -- Needed to "unstick" hinges.

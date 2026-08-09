@@ -5,7 +5,7 @@ local Orientation = require("./Orientation")
 local ShapeData = require("./ShapeData")
 local TestHelpers = require("./TestHelpers")
 
-local kShapes: {ShapeData.ShapeName} = {"Brick", "Wedge", "CornerWedge", "Cylinder", "Ball"}
+local kShapes: {ShapeData.ShapeName} = {"Brick", "Wedge", "CornerWedge", "Cylinder", "CylinderY", "Ball"}
 
 -- Generic sizes: distinct dimensions where the shape family allows them.
 -- Balls are uniform in practice.
@@ -14,6 +14,7 @@ local kTestSizes: {[ShapeData.ShapeName]: Vector3} = {
 	Wedge = Vector3.new(2, 3, 5),
 	CornerWedge = Vector3.new(2, 3, 5),
 	Cylinder = Vector3.new(5, 3, 2),
+	CylinderY = Vector3.new(3, 5, 2),
 	Ball = Vector3.new(3, 3, 3),
 }
 
@@ -22,6 +23,7 @@ return function(t: TestTypes.TestContext)
 		t.expect(#ShapeData.symmetryGroup("Brick")).toBe(24)
 		t.expect(#ShapeData.symmetryGroup("Ball")).toBe(24)
 		t.expect(#ShapeData.symmetryGroup("Cylinder")).toBe(8)
+		t.expect(#ShapeData.symmetryGroup("CylinderY")).toBe(8)
 		t.expect(#ShapeData.symmetryGroup("Wedge")).toBe(2)
 		t.expect(#ShapeData.symmetryGroup("CornerWedge")).toBe(1)
 	end)
@@ -30,6 +32,7 @@ return function(t: TestTypes.TestContext)
 		t.expect(ShapeData.classCount("Brick")).toBe(1)
 		t.expect(ShapeData.classCount("Ball")).toBe(1)
 		t.expect(ShapeData.classCount("Cylinder")).toBe(3)
+		t.expect(ShapeData.classCount("CylinderY")).toBe(3)
 		t.expect(ShapeData.classCount("Wedge")).toBe(12)
 		t.expect(ShapeData.classCount("CornerWedge")).toBe(24)
 	end)

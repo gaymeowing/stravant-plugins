@@ -31,7 +31,7 @@ MaterialFlip follows the modern GeomTools three-layer plugin architecture (see G
 
 1. **Functionality layer** — Targeting, hover feedback, the flip operation.
    - `src/Orientation.lua` — The 24-element octahedral rotation group as signed permutation matrices, with stable integer ids, composition/inverse tables, quarter turn constructors, and size permutation helpers.
-   - `src/ShapeData.lua` — Per-shape symmetry groups H (Brick/Ball: 24, Cylinder: 8, Wedge: 2, CornerWedge: 1) and orientation class (right coset) bookkeeping. Class count = 24/|H| = number of distinct baked meshes a shape needs.
+   - `src/ShapeData.lua` — Per-shape symmetry groups H (Brick/Ball: 24, Cylinder/CylinderY: 8, Wedge: 2, CornerWedge: 1) and orientation class (right coset) bookkeeping. Class count = 24/|H| = number of distinct baked meshes a shape needs. CylinderY is the SpecialMesh cylinder variant (axis along Y, used for oval cylinders); it only arises from SpecialMesh parts, so it is always PrimitiveOnly and never needs meshes. Primitive-shaped SpecialMeshes get their Scale permuted and Offset counter-rotated on flips so the rendered solid stays in place.
    - `src/getShape.lua` — Classifies a part's primitive shape (Brick, Wedge, CornerWedge, Cylinder, Ball, Terrain), honoring SpecialMesh children.
    - `src/identifyPart.lua` — Reverse lookup of a part's flip state (shape, material orientation m, shape frame P, shape size). Primitives are always m = identity; MeshPart representations are identified by the MeshId of the published assets, recovering the class representative (equivalent modulo the shape's symmetry group - all downstream behavior is invariant to this).
    - `src/canFlip.lua` — Whether a part is flippable (identifiable and not locked).
