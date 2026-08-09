@@ -125,7 +125,7 @@ local function OptionsPanel(props: {
 		TargetLocked = e(HelpGui.WithHelpIcon, {
 			LayoutOrder = 4,
 			Subject = e(Checkbox, {
-				Label = "Target Locked",
+				Label = "Allow Targeting Locked",
 				Checked = props.Settings.TargetLocked,
 				Changed = function(newValue: boolean)
 					props.Settings.TargetLocked = newValue
