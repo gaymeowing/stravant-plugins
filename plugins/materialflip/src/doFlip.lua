@@ -22,6 +22,7 @@ local ShapeData = require("./ShapeData")
 local identifyPart = require("./identifyPart")
 local pickRotationFace = require("./pickRotationFace")
 local getMeshRepresentation = require("./getMeshRepresentation")
+local getNegateHelper = require("./getNegateHelper")
 local copyPartProps = require("./copyPartProps")
 local warmRenderParts = require("./warmRenderParts")
 
@@ -188,18 +189,26 @@ local function doFlip(part: BasePart, worldPoint: Vector3, worldNormal: Vector3,
 	local csgRotate = state.ApproximatedAsBox and state.CsgRotatable
 		and (options.AllowMeshPartRotation or part:IsA("UnionOperation"))
 	if csgRotate then
-		-- CSG path: union a clone of the part with a tiny helper part that
-		-- goes first and carries the rotated material frame - the CSG
+		-- CSG path: union a clone of the part with a tiny NEGATIVE helper
+		-- that goes first and carries the rotated material frame - the CSG
 		-- result's local frame (and therefore its material) comes from the
-		-- first input while the geometry stays exactly in place. Operating on
-		-- a clone keeps the live part untouched while the async union runs
-		-- (no flicker), and the inputs are whitened because the CSG API bakes
-		-- input colors into vertex colors, which would darken a colored part
-		-- a bit more on every flip.
-		local helper = Instance.new("Part")
+		-- first input, and negative geometry contributes nothing to the
+		-- result's shape (a positive helper could show up as a visible speck
+		-- when the part's center lies outside its geometry). Operating on a
+		-- clone keeps the live part untouched while the async union runs (no
+		-- flicker), and inputs are whitened where the visible color doesn't
+		-- come from baked vertex colors, since the CSG API multiplies input
+		-- colors into the bake, darkening a colored part on every flip.
+		local helper = getNegateHelper()
+		if not helper then
+			if recording then
+				ChangeHistoryService:FinishRecording(recording, Enum.FinishRecordingOperation.Cancel)
+			end
+			return nil
+		end
+		assert(helper)
 		helper.Size = Vector3.new(0.05, 0.05, 0.05)
 		helper.CFrame = newCFrame
-		helper.Color = Color3.new(1, 1, 1)
 		local wasArchivable = part.Archivable
 		part.Archivable = true
 		local clone = part:Clone()
