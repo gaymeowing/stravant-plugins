@@ -83,9 +83,9 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 	indicatorCone.Color3 = kIndicatorColor
 	indicatorCone.Parent = CoreGui
 
-	-- The label is adorned to Workspace itself, so StudsOffset is simply the
-	-- world space position to show it at (BillboardGui can't be adorned to a
-	-- non-parented part; only HandleAdornments can)
+	-- The label is adorned to Workspace itself, so StudsOffsetWorldSpace is
+	-- simply the world space position to show it at (BillboardGui can't be
+	-- adorned to a non-parented part; only HandleAdornments can)
 	local indicatorLabel = Instance.new("BillboardGui")
 	indicatorLabel.Name = "MaterialFlipFrontLabel"
 	indicatorLabel.Size = UDim2.fromOffset(60, 18)
@@ -130,7 +130,7 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 		indicatorCone.Height = coneLength
 		indicatorCone.Radius = math.clamp(length * 0.14, 0.12, 0.7)
 		indicatorCone.CFrame = CFrame.new(0, 0, -(halfZ + shaftLength))
-		indicatorLabel.StudsOffset = (part.CFrame * CFrame.new(0, 0, -(halfZ + length + 0.7))).Position
+		indicatorLabel.StudsOffsetWorldSpace = (part.CFrame * CFrame.new(0, 0, -(halfZ + length + 0.7))).Position
 		indicatorShaft.Adornee = part
 		indicatorCone.Adornee = part
 		indicatorLabel.Enabled = true

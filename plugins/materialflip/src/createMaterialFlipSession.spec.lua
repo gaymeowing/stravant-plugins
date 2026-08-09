@@ -44,13 +44,13 @@ return function(t: TestTypes.TestContext)
 		if (cone.CFrame.ZVector - Vector3.new(0, 0, 1)).Magnitude > 0.001 then
 			t.fail("Cone apex should extend out the front, got ZVector " .. tostring(cone.CFrame.ZVector))
 		end
-		-- The label is adorned to Workspace with StudsOffset as its world
-		-- position, past the arrow tip (size (4,4,6): arrow length 3, so the
-		-- tip margin puts it at z=-6.7)
+		-- The label is adorned to Workspace with StudsOffsetWorldSpace as its
+		-- world position, past the arrow tip (size (4,4,6): arrow length 3,
+		-- so the tip margin puts it at z=-6.7)
 		t.expect(label.Enabled).toBeTruthy()
 		t.expect(label.Adornee).toBe(workspace)
-		if (label.StudsOffset - Vector3.new(0, 0, -6.7)).Magnitude > 0.001 then
-			t.fail("Label offset in the wrong place: " .. tostring(label.StudsOffset))
+		if (label.StudsOffsetWorldSpace - Vector3.new(0, 0, -6.7)).Magnitude > 0.001 then
+			t.fail("Label offset in the wrong place: " .. tostring(label.StudsOffsetWorldSpace))
 		end
 
 		session.TestSetHover(nil)
