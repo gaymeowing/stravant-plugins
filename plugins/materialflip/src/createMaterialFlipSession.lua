@@ -155,9 +155,13 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 		mArcKey = key
 
 		rotationArc:Clear()
-		-- Adorned to Terrain (identity), so the adornment CFrame is the world
-		-- space shape frame and the arc geometry below is in shape space
-		rotationArc.CFrame = state.ShapeCFrame
+
+		-- WireframeHandleAdornment uses only the vertex positions, in world
+		-- space (its Adornee and CFrame don't transform them), so the arc is
+		-- built in shape space and each point mapped through the shape frame.
+		local function toWorld(p: Vector3): Vector3
+			return state.ShapeCFrame:PointToWorldSpace(p)
+		end
 
 		-- Face plane basis: (u, v, n) right handed, so increasing angle is
 		-- counterclockwise as seen from outside the face
@@ -177,7 +181,7 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 		local startDeg, endDeg = 20, 300
 		for deg = startDeg, endDeg, 14 do
 			local theta = math.rad(deg * dirSign)
-			table.insert(points, center + radius * (math.cos(theta) * u + math.sin(theta) * v))
+			table.insert(points, toWorld(center + radius * (math.cos(theta) * u + math.sin(theta) * v)))
 		end
 		rotationArc:AddPath(points, false)
 
@@ -187,8 +191,8 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 		local tangent = dirSign * (-math.sin(thetaEnd) * u + math.cos(thetaEnd) * v)
 		local tip = center + radius * radial
 		local headLen = radius * 0.35
-		rotationArc:AddLine(tip, tip - tangent * headLen + radial * headLen * 0.5)
-		rotationArc:AddLine(tip, tip - tangent * headLen - radial * headLen * 0.5)
+		rotationArc:AddLine(toWorld(tip), toWorld(tip - tangent * headLen + radial * headLen * 0.5))
+		rotationArc:AddLine(toWorld(tip), toWorld(tip - tangent * headLen - radial * headLen * 0.5))
 	end
 
 	-- Sized/positioned from the hovered part every frame since flips can
