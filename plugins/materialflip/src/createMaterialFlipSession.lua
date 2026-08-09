@@ -232,7 +232,13 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 		indicatorLabel.StudsOffsetWorldSpace = (part.CFrame * CFrame.new(0, 0, -(halfZ + length + 0.7))).Position
 		-- Warn on the label when the part is only approximated as a box
 		local approximated = mHoverState ~= nil and (mHoverState :: identifyPart.PartState).ApproximatedAsBox
-		indicatorLabelText.Text = if approximated then "\u{26A0} Front" else "Front"
+		if approximated then
+			indicatorLabelText.Text = "Front\n\u{26A0} Non-Primitive"
+			indicatorLabel.Size = UDim2.fromOffset(110, 36)
+		else
+			indicatorLabelText.Text = "Front"
+			indicatorLabel.Size = UDim2.fromOffset(60, 18)
+		end
 		indicatorShaft.Adornee = part
 		indicatorCone.Adornee = part
 		indicatorLabel.Enabled = true

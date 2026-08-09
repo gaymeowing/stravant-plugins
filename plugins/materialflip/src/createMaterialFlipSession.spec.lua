@@ -90,10 +90,10 @@ return function(t: TestTypes.TestContext)
 		assert(state, "expected a hover state")
 		t.expect(state.ApproximatedAsBox).toBeTruthy()
 
-		-- The front label carries a warning icon for approximated parts
+		-- The front label carries a warning line for approximated parts
 		local label = CoreGui:FindFirstChild("MaterialFlipFrontLabel") :: BillboardGui
 		local text = label:FindFirstChildOfClass("TextLabel") :: TextLabel
-		t.expect(text.Text).toBe("\u{26A0} Front")
+		t.expect(text.Text).toBe("Front\n\u{26A0} Non-Primitive")
 
 		-- And a primitive hover has no warning
 		local part = Instance.new("Part")
