@@ -18,6 +18,7 @@ local Settings = require("./Settings")
 export type MaterialFlipSession = {
 	ChangeSignal: Signal.Signal<>,
 	GetHoverPart: () -> BasePart?,
+	GetHoverState: () -> identifyPart.PartState?,
 	Update: () -> (),
 	Destroy: () -> (),
 	TestClick: (part: BasePart, point: Vector3, normal: Vector3) -> BasePart?,
@@ -64,6 +65,7 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 	local changeSignal = Signal.new()
 
 	local mHoverPart: BasePart? = nil
+	local mHoverState: identifyPart.PartState? = nil
 	local mDestroyed = false
 
 	local connections: {RBXScriptConnection} = {}
@@ -132,18 +134,13 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 		end
 	end
 
-	local function updateRotationArc(part: BasePart?, worldPoint: Vector3?, worldNormal: Vector3?)
-		if not part or not worldPoint or not worldNormal then
+	local function updateRotationArc(worldPoint: Vector3?, worldNormal: Vector3?)
+		local state = mHoverState
+		if not state or not worldPoint or not worldNormal then
 			clearRotationArc()
 			return
 		end
-		assert(part and worldPoint and worldNormal)
-		local state = identifyPart(part)
-		if not state then
-			clearRotationArc()
-			return
-		end
-		assert(state)
+		assert(state and worldPoint and worldNormal)
 
 		local face = pickRotationFace(state, worldPoint, worldNormal)
 		local clockwise = activeSettings.RotateDirection == "Clockwise"
@@ -224,14 +221,20 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 		indicatorCone.Radius = math.clamp(length * 0.14, 0.12, 0.7)
 		indicatorCone.CFrame = CFrame.new(0, 0, -(halfZ + shaftLength))
 		indicatorLabel.StudsOffsetWorldSpace = (part.CFrame * CFrame.new(0, 0, -(halfZ + length + 0.7))).Position
+		-- Warn on the label when the part is only approximated as a box
+		local approximated = mHoverState ~= nil and (mHoverState :: identifyPart.PartState).ApproximatedAsBox
+		indicatorLabelText.Text = if approximated then "\u{26A0} Front" else "Front"
 		indicatorShaft.Adornee = part
 		indicatorCone.Adornee = part
 		indicatorLabel.Enabled = true
 	end
 
 	local function setHoverPart(part: BasePart?)
-		if part ~= mHoverPart then
-			mHoverPart = part
+		local changed = part ~= mHoverPart
+		mHoverPart = part
+		-- Recomputed even for the same part: in-place flips change its state
+		mHoverState = if part then identifyPart(part) else nil
+		if changed then
 			highlight.Adornee = part
 			changeSignal:Fire()
 		end
@@ -242,7 +245,7 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 		local hit, at, normal = getTarget()
 		if hit and canFlip(hit) then
 			setHoverPart(hit)
-			updateRotationArc(hit, at, normal)
+			updateRotationArc(at, normal)
 		else
 			setHoverPart(nil)
 			updateRotationArc(nil)
@@ -278,6 +281,9 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 		GetHoverPart = function()
 			return mHoverPart
 		end,
+		GetHoverState = function()
+			return mHoverState
+		end,
 		Update = function()
 			-- Called when settings change, nothing to do currently
 		end,
@@ -303,7 +309,7 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 		end,
 		TestSetHover = function(part: BasePart?, point: Vector3?, normal: Vector3?)
 			setHoverPart(part)
-			updateRotationArc(part, point, normal)
+			updateRotationArc(point, normal)
 		end,
 	}
 	return session

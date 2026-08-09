@@ -69,6 +69,30 @@ local function RotateDirectionPanel(props: {
 	})
 end
 
+local function StatusPanel(props: {
+	Text: string,
+	IsWarning: boolean,
+	LayoutOrder: number?,
+})
+	return e(SubPanel, {
+		Title = "Status",
+		LayoutOrder = props.LayoutOrder,
+		Padding = UDim.new(0, 4),
+	}, {
+		StatusText = e("TextLabel", {
+			Size = UDim2.fromScale(1, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			BackgroundTransparency = 1,
+			TextWrapped = true,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Font = Enum.Font.SourceSans,
+			TextSize = 18,
+			TextColor3 = if props.IsWarning then Color3.fromRGB(255, 170, 60) else Colors.WHITE,
+			Text = if props.IsWarning then "\u{26A0} " .. props.Text else props.Text,
+		}),
+	})
+end
+
 local function CloseButton(props: {
 	HandleAction: (string) -> (),
 	LayoutOrder: number?,
@@ -109,6 +133,8 @@ local function MaterialFlipGui(props: {
 	UpdatedSettings: () -> (),
 	HandleAction: (string) -> (),
 	Panelized: boolean,
+	StatusText: string,
+	StatusIsWarning: boolean,
 })
 	local currentSettings = props.CurrentSettings
 	local nextOrder = createNextOrder()
@@ -125,6 +151,11 @@ local function MaterialFlipGui(props: {
 		RotateDirectionPanel = e(RotateDirectionPanel, {
 			Settings = currentSettings,
 			UpdatedSettings = props.UpdatedSettings,
+			LayoutOrder = nextOrder(),
+		}),
+		StatusPanel = e(StatusPanel, {
+			Text = props.StatusText,
+			IsWarning = props.StatusIsWarning,
 			LayoutOrder = nextOrder(),
 		}),
 		CloseButton = e(CloseButton, {

@@ -32,6 +32,9 @@ export type PartState = {
 	-- SpecialMesh-bearing parts keep their mesh child, so they can only
 	-- take orientations their primitive can represent
 	PrimitiveOnly: boolean,
+	-- The part isn't really its classified shape (union, foreign mesh,
+	-- truss...): it flips with box behavior, which rotates its geometry
+	ApproximatedAsBox: boolean,
 }
 
 local function identifyPart(part: Instance?): PartState?
@@ -42,22 +45,33 @@ local function identifyPart(part: Instance?): PartState?
 
 	if part:IsA("MeshPart") then
 		local info = MeshAssets.fromMeshId(part.MeshId)
-		if not info then
-			return nil -- Foreign MeshPart, not flippable
+		if info then
+			local m = info.Orientation
+			return {
+				Part = part,
+				Shape = info.Shape,
+				Orientation = m,
+				ShapeCFrame = part.CFrame * Orientation.getCFrame(m):Inverse(),
+				ShapeSize = Orientation.permuteSize(m, part.Size),
+				IsMeshRepresentation = true,
+				PrimitiveOnly = false,
+				ApproximatedAsBox = false,
+			}
 		end
-		local m = info.Orientation
+		-- Foreign MeshPart: flippable with box behavior
 		return {
 			Part = part,
-			Shape = info.Shape,
-			Orientation = m,
-			ShapeCFrame = part.CFrame * Orientation.getCFrame(m):Inverse(),
-			ShapeSize = Orientation.permuteSize(m, part.Size),
-			IsMeshRepresentation = true,
-			PrimitiveOnly = false,
+			Shape = "Brick" :: ShapeData.ShapeName,
+			Orientation = Orientation.Identity,
+			ShapeCFrame = part.CFrame,
+			ShapeSize = part.Size,
+			IsMeshRepresentation = false,
+			PrimitiveOnly = true,
+			ApproximatedAsBox = true,
 		}
 	end
 
-	local shape = getShape(part)
+	local shape, _scale, approximated = getShape(part)
 	if shape == "Terrain" then
 		return nil
 	end
@@ -69,7 +83,8 @@ local function identifyPart(part: Instance?): PartState?
 		ShapeCFrame = part.CFrame,
 		ShapeSize = part.Size,
 		IsMeshRepresentation = false,
-		PrimitiveOnly = part:FindFirstChildOfClass("SpecialMesh") ~= nil,
+		PrimitiveOnly = part:FindFirstChildOfClass("SpecialMesh") ~= nil or approximated,
+		ApproximatedAsBox = approximated,
 	}
 end
 

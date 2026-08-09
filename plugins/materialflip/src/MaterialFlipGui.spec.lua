@@ -26,6 +26,8 @@ local function mountAndUnmount(guiState: "inactive" | "active", panelized: boole
 			UpdatedSettings = function() end,
 			HandleAction = function() end,
 			Panelized = panelized,
+			StatusText = "Hover over a part to rotate its material.",
+			StatusIsWarning = false,
 		}))
 	end)
 
@@ -38,6 +40,27 @@ end
 return function(t: TestTypes.TestContext)
 	t.test("Active floating window smoke", function()
 		mountAndUnmount("active", false)
+	end)
+	t.test("Warning status smoke", function()
+		local screen = Instance.new("ScreenGui")
+		screen.Name = "MaterialFlipGuiWarningTest"
+		screen.Parent = CoreGui
+		local root = ReactRoblox.createRoot(screen)
+		ReactRoblox.act(function()
+			root:render(e(MaterialFlipGui, {
+				GuiState = "active",
+				CurrentSettings = TestHelpers.makeTestSettings(),
+				UpdatedSettings = function() end,
+				HandleAction = function() end,
+				Panelized = false,
+				StatusText = "This part is not a primitive shape. It will be rotated as if it were a box.",
+				StatusIsWarning = true,
+			}))
+		end)
+		ReactRoblox.act(function()
+			root:unmount()
+		end)
+		screen:Destroy()
 	end)
 	t.test("Active panelized smoke", function()
 		mountAndUnmount("active", true)

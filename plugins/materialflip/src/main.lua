@@ -53,6 +53,18 @@ return function(plugin: Plugin, panel: DockWidgetPluginGui, buttonClicked: Signa
 		return if mActive then "active" else "inactive"
 	end
 
+	local function getStatus(): (string, boolean)
+		local state = if mSession then mSession.GetHoverState() else nil
+		if not state then
+			return "Hover over a part to rotate its material.", false
+		end
+		assert(state)
+		if state.ApproximatedAsBox then
+			return "This part is not a primitive shape. It will be rotated as if it were a box.", true
+		end
+		return "Hovering: " .. state.Shape, false
+	end
+
 	local function updateUI()
 		local needsUI = mActive or panel.Enabled
 		if needsUI then
@@ -67,6 +79,7 @@ return function(plugin: Plugin, panel: DockWidgetPluginGui, buttonClicked: Signa
 			end
 
 			assert(mReactRoot, "We just created it")
+			local statusText, statusIsWarning = getStatus()
 			mReactRoot:render(React.createElement(MaterialFlipGui, {
 				GuiState = getGuiState(),
 				CurrentSettings = activeSettings,
@@ -78,6 +91,8 @@ return function(plugin: Plugin, panel: DockWidgetPluginGui, buttonClicked: Signa
 				end,
 				HandleAction = handleAction,
 				Panelized = panel.Enabled,
+				StatusText = statusText,
+				StatusIsWarning = statusIsWarning,
 			}))
 		elseif mReactRoot then
 			destroyReactRoot()

@@ -319,6 +319,29 @@ return function(t: TestTypes.TestContext)
 		ball:Destroy()
 	end)
 
+	t.test("foreign MeshParts flip in place with box behavior", function()
+		local foreign = Instance.new("MeshPart")
+		foreign.Anchored = true
+		foreign.Size = Vector3.new(1, 2, 3)
+		foreign.CFrame = CFrame.new(3, 25, 7)
+		foreign.Parent = workspace
+		local originalCFrame = foreign.CFrame
+
+		local topPoint = foreign.Position + Vector3.new(0, 1, 0)
+		local result = doFlip(foreign, topPoint, Vector3.yAxis, true)
+		t.expect(result).toBe(foreign) -- in place, stays the same instance
+		expectVectorNear(foreign.Size, Vector3.new(3, 2, 1))
+		expectVectorNear(foreign.Position, Vector3.new(3, 25, 7))
+
+		for _ = 1, 3 do
+			t.expect(doFlip(foreign, topPoint, Vector3.yAxis, true)).toBe(foreign)
+		end
+		expectVectorNear(foreign.Size, Vector3.new(1, 2, 3))
+		expectCFrameNear(foreign.CFrame, originalCFrame)
+
+		foreign:Destroy()
+	end)
+
 	t.test("SpecialMesh parts only flip within their primitive's symmetries", function()
 		-- A SpecialMesh wedge can't be converted to a MeshPart without losing
 		-- its mesh, and no quarter turn is a wedge symmetry, so: no-op

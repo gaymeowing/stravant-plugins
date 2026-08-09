@@ -26,9 +26,14 @@ return function(t: TestTypes.TestContext)
 		cylinder.Shape = Enum.PartType.Cylinder
 		t.expect(canFlip(cylinder)).toBeTruthy()
 		cylinder:Destroy()
+
+		-- Foreign MeshParts are flippable with box behavior
+		local foreignMesh = Instance.new("MeshPart")
+		t.expect(canFlip(foreignMesh)).toBeTruthy()
+		foreignMesh:Destroy()
 	end)
 
-	t.test("rejects nil, locked parts, terrain, and foreign MeshParts", function()
+	t.test("rejects nil, locked parts, and terrain", function()
 		t.expect(canFlip(nil)).toBeFalsy()
 
 		local locked = Instance.new("Part")
@@ -37,9 +42,5 @@ return function(t: TestTypes.TestContext)
 		locked:Destroy()
 
 		t.expect(canFlip(workspace.Terrain)).toBeFalsy()
-
-		local foreignMesh = Instance.new("MeshPart")
-		t.expect(canFlip(foreignMesh)).toBeFalsy()
-		foreignMesh:Destroy()
 	end)
 end

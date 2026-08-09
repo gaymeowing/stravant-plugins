@@ -71,7 +71,42 @@ return function(t: TestTypes.TestContext)
 		t.expect(cone.Adornee).toBe(nil)
 		t.expect(shaft.Adornee).toBe(nil)
 		t.expect(label.Enabled).toBeFalsy()
+		t.expect(session.GetHoverState()).toBe(nil)
 
+		part:Destroy()
+		session.Destroy()
+	end)
+
+	t.test("foreign MeshPart hover reports a box approximation warning", function()
+		local session = createMaterialFlipSession(TestHelpers.makeTestSettings())
+
+		local foreign = Instance.new("MeshPart")
+		foreign.Anchored = true
+		foreign.Size = Vector3.new(4, 4, 4)
+		foreign.Parent = workspace
+
+		session.TestSetHover(foreign, foreign.Position + Vector3.new(0, 2, 0), Vector3.yAxis)
+		local state = session.GetHoverState()
+		assert(state, "expected a hover state")
+		t.expect(state.ApproximatedAsBox).toBeTruthy()
+
+		-- The front label carries a warning icon for approximated parts
+		local label = CoreGui:FindFirstChild("MaterialFlipFrontLabel") :: BillboardGui
+		local text = label:FindFirstChildOfClass("TextLabel") :: TextLabel
+		t.expect(text.Text).toBe("\u{26A0} Front")
+
+		-- And a primitive hover has no warning
+		local part = Instance.new("Part")
+		part.Anchored = true
+		part.Size = Vector3.new(4, 4, 4)
+		part.Parent = workspace
+		session.TestSetHover(part, part.Position + Vector3.new(0, 2, 0), Vector3.yAxis)
+		local primState = session.GetHoverState()
+		assert(primState)
+		t.expect(primState.ApproximatedAsBox).toBeFalsy()
+		t.expect(text.Text).toBe("Front")
+
+		foreign:Destroy()
 		part:Destroy()
 		session.Destroy()
 	end)

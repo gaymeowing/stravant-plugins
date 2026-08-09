@@ -3,56 +3,59 @@
 -- Classify a part's shape for the purposes of material flipping.
 -- Note: Balls and Cylinders are distinct because they have different
 -- symmetry groups (a cylinder's axis must map to itself, a ball's needn't).
+--
+-- The third return is whether the classification is an approximation: the
+-- part isn't actually the primitive shape and is being treated as a box
+-- (unions, file meshes, trusses, etc).
 
 export type Shape = "Brick" | "Wedge" | "CornerWedge" | "Cylinder" | "Ball" | "Terrain"
 
 local kUniformScale = Vector3.new(1, 1, 1)
 
-local function getShape(part: BasePart): (Shape, Vector3)
+local function getShape(part: BasePart): (Shape, Vector3, boolean)
 	for _, ch in part:GetChildren() do
 		if ch:IsA("SpecialMesh") then
 			local scale = ch.Scale
 			local meshType = ch.MeshType
-			if meshType == Enum.MeshType.Brick or
-				meshType == Enum.MeshType.FileMesh or
-				meshType == Enum.MeshType.Torso then
-				return "Brick", scale
+			if meshType == Enum.MeshType.Brick then
+				return "Brick", scale, false
+			elseif meshType == Enum.MeshType.FileMesh or meshType == Enum.MeshType.Torso then
+				return "Brick", scale, true
 			elseif meshType == Enum.MeshType.CornerWedge then
-				return "CornerWedge", scale
+				return "CornerWedge", scale, false
 			elseif meshType == Enum.MeshType.Wedge then
-				return "Wedge", scale
+				return "Wedge", scale, false
 			elseif meshType == Enum.MeshType.Cylinder then
-				return "Cylinder", scale
+				return "Cylinder", scale, false
 			elseif meshType == Enum.MeshType.Sphere or meshType == Enum.MeshType.Head then
-				return "Ball", scale
+				return "Ball", scale, false
 			else
-				warn("MaterialFlip: Unsupported mesh type, treating as a normal brick.")
-				return "Brick", scale
+				return "Brick", scale, true
 			end
 		end
 	end
 	if part:IsA("WedgePart") then
-		return "Wedge", kUniformScale
+		return "Wedge", kUniformScale, false
 	elseif part:IsA("CornerWedgePart") then
-		return "CornerWedge", kUniformScale
+		return "CornerWedge", kUniformScale, false
 	elseif part:IsA("Terrain") then
-		return "Terrain", kUniformScale
+		return "Terrain", kUniformScale, false
 	elseif part:IsA("Part") then
 		local shape = part.Shape
 		if shape == Enum.PartType.Ball then
-			return "Ball", kUniformScale
+			return "Ball", kUniformScale, false
 		elseif shape == Enum.PartType.Cylinder then
-			return "Cylinder", kUniformScale
+			return "Cylinder", kUniformScale, false
 		elseif shape == Enum.PartType.Wedge then
-			return "Wedge", kUniformScale
+			return "Wedge", kUniformScale, false
 		elseif shape == Enum.PartType.CornerWedge then
-			return "CornerWedge", kUniformScale
+			return "CornerWedge", kUniformScale, false
 		else
-			return "Brick", kUniformScale
+			return "Brick", kUniformScale, false
 		end
 	else
-		-- UnionOperation, MeshPart, etc: treat as a brick
-		return "Brick", kUniformScale
+		-- UnionOperation, TrussPart, foreign MeshPart, etc: treat as a box
+		return "Brick", kUniformScale, true
 	end
 end
 

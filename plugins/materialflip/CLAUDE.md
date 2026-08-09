@@ -51,7 +51,7 @@ MaterialFlip follows the modern GeomTools three-layer plugin architecture (see G
    - `src/Settings.lua` — Reads/writes plugin settings (key: `"materialFlipState"`). `RotateDirection` (Clockwise / CounterClockwise) selects the quarter turn direction, plus the standard window state.
 
 3. **UI layer** — React components that modify settings and trigger operations.
-   - `src/MaterialFlipGui.lua` — Main settings panel (React): rotate direction chips and a close button.
+   - `src/MaterialFlipGui.lua` — Main settings panel (React): rotate direction chips, a status box (hover info; warns when a non-primitive part will be flipped with box behavior), and a close button.
    - `src/PluginGui/` — Reusable UI components shared with the other GeomTools plugins (PluginGui window frame, SubPanel, ChipForToggle, OperationButton, HelpGui, Colors, Types).
 
 **Entry point:** `loader.server.lua` creates the toolbar button and dock widget, then lazy-loads `src/main.lua` on first activation. `src/main.lua` orchestrates the three layers — it manages the active session and mounts the React UI (in the dock panel when Panelized, otherwise in a floating window in CoreGui).
