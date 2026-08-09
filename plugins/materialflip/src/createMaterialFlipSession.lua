@@ -10,6 +10,7 @@ local Signal = require(Packages.Signal)
 
 local canFlip = require("./canFlip")
 local doFlip = require("./doFlip")
+local preloadMeshRepresentations = require("./preloadMeshRepresentations")
 local Settings = require("./Settings")
 
 export type MaterialFlipSession = {
@@ -55,6 +56,10 @@ local function getTarget(): (BasePart?, Vector3)
 end
 
 local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSettings): MaterialFlipSession
+	-- Warm the mesh templates and their render content in the background so
+	-- the first flip doesn't flicker (one-shot per plugin lifetime)
+	preloadMeshRepresentations()
+
 	local changeSignal = Signal.new()
 
 	local mHoverPart: BasePart? = nil
