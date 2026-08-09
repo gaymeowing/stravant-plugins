@@ -178,7 +178,9 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 		local dirSign = if clockwise then -1 else 1
 
 		local points = {}
-		local startDeg, endDeg = 20, 300
+		-- Offset 180 degrees so the arc's open side aligns with the front
+		-- face arrow rather than pointing away from it
+		local startDeg, endDeg = 200, 480
 		for deg = startDeg, endDeg, 14 do
 			local theta = math.rad(deg * dirSign)
 			table.insert(points, toWorld(center + radius * (math.cos(theta) * u + math.sin(theta) * v)))
