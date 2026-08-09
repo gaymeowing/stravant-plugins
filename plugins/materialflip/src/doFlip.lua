@@ -205,7 +205,13 @@ local function doFlip(part: BasePart, worldPoint: Vector3, worldNormal: Vector3,
 		local clone = part:Clone()
 		part.Archivable = wasArchivable
 		clone:ClearAllChildren()
-		clone.Color = Color3.new(1, 1, 1)
+		-- Whiten the input only where the visible color doesn't come from the
+		-- baked vertex colors: MeshParts, and unions showing their Part
+		-- color. Unions without UsePartColor keep their input colors - the
+		-- baked colors ARE their appearance.
+		if part:IsA("MeshPart") or (part:IsA("UnionOperation") and part.UsePartColor) then
+			clone.Color = Color3.new(1, 1, 1)
+		end
 		local ok, unionResults = pcall(function()
 			return GeometryService:UnionAsync(helper, {clone})
 		end)
@@ -247,8 +253,10 @@ local function doFlip(part: BasePart, worldPoint: Vector3, worldNormal: Vector3,
 			-- Union operands produce a UnionOperation, which can't ApplyMesh:
 			-- swap it in. Its geometry and CFrame are already baked in place.
 			copyPartProps(part, unioned)
-			if unioned:IsA("UnionOperation") then
-				unioned.UsePartColor = true
+			if part:IsA("UnionOperation") and unioned:IsA("UnionOperation") then
+				-- Preserve the color mode rather than forcing UsePartColor:
+				-- flipping must work on per-input-colored unions too
+				unioned.UsePartColor = part.UsePartColor
 			end
 			swapIn(unioned)
 		end

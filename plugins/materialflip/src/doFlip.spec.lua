@@ -692,7 +692,8 @@ return function(t: TestTypes.TestContext)
 		local union = GeometryService:UnionAsync(a, {b})[1] :: BasePart
 		a:Destroy()
 		b:Destroy()
-		union.Anchored = true
+		union.Anchored = true;
+		(union :: UnionOperation).UsePartColor = false
 		union.Parent = workspace
 		local before = union.CFrame
 
@@ -705,7 +706,30 @@ return function(t: TestTypes.TestContext)
 		local expected = before * Orientation.getCFrame(Orientation.quarterTurnAbout(Enum.NormalId.Top, true))
 		expectVectorNear(result.CFrame.Position, before.Position)
 		expectVectorNear(result.CFrame.XVector, expected.XVector)
+		-- The color mode is preserved, not forced to UsePartColor
+		t.expect((result :: UnionOperation).UsePartColor).toBeFalsy()
 
+		-- And a UsePartColor union keeps that mode too
+		local c = Instance.new("Part")
+		c.Size = Vector3.new(4, 1, 4)
+		c.CFrame = CFrame.new(0, 75, 0)
+		local d = Instance.new("Part")
+		d.Size = Vector3.new(1, 4, 1)
+		d.CFrame = CFrame.new(0, 76, 0)
+		local union2 = GeometryService:UnionAsync(c, {d})[1] :: UnionOperation
+		c:Destroy()
+		d:Destroy()
+		union2.Anchored = true
+		union2.UsePartColor = true
+		union2.Color = Color3.fromRGB(50, 200, 100)
+		union2.Parent = workspace
+		local result2 = doFlip(union2, union2.Position + Vector3.new(0, 2, 0), Vector3.yAxis, kCW)
+		assert(result2)
+		t.expect((result2 :: UnionOperation).UsePartColor).toBeTruthy()
+		t.expect(result2.Color).toBe(Color3.fromRGB(50, 200, 100))
+
+		result2:Destroy()
+		union2:Destroy()
 		result:Destroy()
 		union:Destroy()
 	end)
