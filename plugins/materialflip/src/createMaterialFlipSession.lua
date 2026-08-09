@@ -117,6 +117,7 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 	indicatorLabelText.Size = UDim2.fromScale(1, 1)
 	indicatorLabelText.Font = Enum.Font.SourceSansBold
 	indicatorLabelText.TextSize = 16
+	indicatorLabelText.RichText = true
 	indicatorLabelText.TextColor3 = kIndicatorColor
 	indicatorLabelText.TextStrokeColor3 = Color3.new(0, 0, 0)
 	indicatorLabelText.TextStrokeTransparency = 0.4
@@ -233,7 +234,7 @@ local function createMaterialFlipSession(activeSettings: Settings.MaterialFlipSe
 		-- Warn on the label when the part is only approximated as a box
 		local approximated = mHoverState ~= nil and (mHoverState :: identifyPart.PartState).ApproximatedAsBox
 		if approximated then
-			indicatorLabelText.Text = "Front\n\u{26A0} Non-Primitive"
+			indicatorLabelText.Text = "Front\n<font color=\"#FF8C00\">\u{26A0} Non-primitive</font>"
 			indicatorLabel.Size = UDim2.fromOffset(110, 36)
 		else
 			indicatorLabelText.Text = "Front"

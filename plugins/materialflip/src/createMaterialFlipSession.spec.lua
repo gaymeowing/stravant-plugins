@@ -93,7 +93,7 @@ return function(t: TestTypes.TestContext)
 		-- The front label carries a warning line for approximated parts
 		local label = CoreGui:FindFirstChild("MaterialFlipFrontLabel") :: BillboardGui
 		local text = label:FindFirstChildOfClass("TextLabel") :: TextLabel
-		t.expect(text.Text).toBe("Front\n\u{26A0} Non-Primitive")
+		t.expect(text.Text).toBe("Front\n<font color=\"#FF8C00\">\u{26A0} Non-primitive</font>")
 
 		-- And a primitive hover has no warning
 		local part = Instance.new("Part")
