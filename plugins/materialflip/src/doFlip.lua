@@ -181,7 +181,13 @@ local function doFlip(part: BasePart, worldPoint: Vector3, worldNormal: Vector3,
 		result = replacement
 	end
 
-	if state.ApproximatedAsBox and state.CsgRotatable and options.AllowMeshPartRotation then
+	-- Unions always take the CSG rotation path: their results persist in the
+	-- place. Foreign MeshParts only take it with the Allow MeshPart Rotation
+	-- setting, because MeshPart union results don't save yet (which is also
+	-- why that setting is currently hidden; see MaterialFlipGui).
+	local csgRotate = state.ApproximatedAsBox and state.CsgRotatable
+		and (options.AllowMeshPartRotation or part:IsA("UnionOperation"))
+	if csgRotate then
 		-- CSG path: union a clone of the part with a tiny helper part that
 		-- goes first and carries the rotated material frame - the CSG
 		-- result's local frame (and therefore its material) comes from the

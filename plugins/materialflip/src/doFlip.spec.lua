@@ -678,16 +678,11 @@ return function(t: TestTypes.TestContext)
 		foreign:Destroy()
 	end)
 
-	t.test("Allow MeshPart Rotation swaps unions for rotated unions", function()
+	t.test("unions always rotate via CSG, even with the setting off", function()
 		local GeometryService = game:GetService("GeometryService")
-		local csgOptions: doFlip.FlipOptions = {
-			Clockwise = true,
-			PreserveAttachments = true,
-			PreserveDecals = false,
-			PreservePivot = false,
-			AllowMeshPartRotation = true,
-		}
-		-- Build a real UnionOperation to flip
+		-- Build a real UnionOperation to flip; note kCW has
+		-- AllowMeshPartRotation off - union results persist, so unions take
+		-- the CSG path unconditionally
 		local a = Instance.new("Part")
 		a.Size = Vector3.new(4, 1, 4)
 		a.CFrame = CFrame.new(0, 70, 0)
@@ -701,7 +696,7 @@ return function(t: TestTypes.TestContext)
 		union.Parent = workspace
 		local before = union.CFrame
 
-		local result = doFlip(union, union.CFrame.Position + Vector3.new(0, 2, 0), Vector3.yAxis, csgOptions)
+		local result = doFlip(union, union.CFrame.Position + Vector3.new(0, 2, 0), Vector3.yAxis, kCW)
 		assert(result, "expected a CSG flip result")
 		-- Unions can't ApplyMesh, so the rotated union is swapped in
 		t.expect(result == union).toBeFalsy()

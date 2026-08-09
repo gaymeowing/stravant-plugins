@@ -111,6 +111,37 @@ return function(t: TestTypes.TestContext)
 		session.Destroy()
 	end)
 
+	t.test("no box warning for unions with default settings", function()
+		local GeometryService = game:GetService("GeometryService")
+		local session = createMaterialFlipSession(TestHelpers.makeTestSettings())
+
+		local a = Instance.new("Part")
+		a.Size = Vector3.new(4, 1, 4)
+		a.CFrame = CFrame.new(0, 90, 0)
+		local b = Instance.new("Part")
+		b.Size = Vector3.new(1, 4, 1)
+		b.CFrame = CFrame.new(0, 91, 0)
+		local union = GeometryService:UnionAsync(a, {b})[1] :: BasePart
+		a:Destroy()
+		b:Destroy()
+		union.Anchored = true
+		union.Parent = workspace
+
+		-- Unions always rotate correctly via CSG, so no warning even though
+		-- Allow MeshPart Rotation is off
+		session.TestSetHover(union, union.Position + Vector3.new(0, 2, 0), Vector3.yAxis)
+		local state = session.GetHoverState()
+		assert(state)
+		t.expect(state.ApproximatedAsBox).toBeTruthy()
+		t.expect(state.CsgRotatable).toBeTruthy()
+		local label = CoreGui:FindFirstChild("MaterialFlipFrontLabel") :: BillboardGui
+		local text = label:FindFirstChildOfClass("TextLabel") :: TextLabel
+		t.expect(text.Text).toBe("Front")
+
+		union:Destroy()
+		session.Destroy()
+	end)
+
 	t.test("no box warning for MeshParts when Allow MeshPart Rotation is on", function()
 		local settings = TestHelpers.makeTestSettings()
 		settings.AllowMeshPartRotation = true

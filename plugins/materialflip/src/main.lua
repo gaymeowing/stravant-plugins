@@ -57,9 +57,14 @@ return function(plugin: Plugin, panel: DockWidgetPluginGui, buttonClicked: Signa
 	-- hover info here too made the UI shift around annoyingly
 	local function getStatus(): (string, boolean)
 		local state = if mSession then mSession.GetHoverState() else nil
-		if state and state.ApproximatedAsBox
-			and not (activeSettings.AllowMeshPartRotation and state.CsgRotatable) then
-			return "This part is not a primitive shape. It will be rotated as if it were a box.", true
+		if state and state.ApproximatedAsBox then
+			-- Unions always rotate correctly via CSG; MeshParts do when the
+			-- setting allows it - only warn when box behavior will be used
+			local willCsgRotate = state.CsgRotatable
+				and (activeSettings.AllowMeshPartRotation or state.Part:IsA("UnionOperation"))
+			if not willCsgRotate then
+				return "This part is not a primitive shape. It will be rotated as if it were a box.", true
+			end
 		end
 		return "Hover over a part and click to rotate its material.", false
 	end
