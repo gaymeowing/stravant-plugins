@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Rokit
         uses: CompeyDev/setup-rokit@v0.1.2
@@ -25,14 +27,89 @@ jobs:
       - name: Install Wally packages
         run: wally install
 
-      - name: Build plugins
-        run: lute scripts/build.luau all --out build
+      - name: Detect changed plugins
+        id: changed
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          prev="$(git describe --tags --abbrev=0 "${tag}^" 2>/dev/null || true)"
+
+          list_all() {
+            find plugins -mindepth 1 -maxdepth 1 -type d -exec basename {} \; | sort
+          }
+
+          if [ -z "$prev" ]; then
+            echo "No previous tag; releasing all plugins"
+            plugins="$(list_all)"
+          else
+            echo "Comparing ${prev}...${tag}"
+            mapfile -t files < <(git diff --name-only "${prev}...${tag}")
+            shared=0
+            for f in "${files[@]}"; do
+              case "$f" in
+                libraries/*|wally.toml|wally.lock|scripts/build.luau|scripts/test/plugins.luau|foreman.toml)
+                  shared=1
+                  break
+                  ;;
+              esac
+            done
+            if [ "$shared" -eq 1 ]; then
+              echo "Shared paths changed; releasing all plugins"
+              plugins="$(list_all)"
+            else
+              plugins="$(printf '%s\n' "${files[@]}" | sed -n 's|^plugins/\([^/]*\)/.*|\1|p' | sort -u)"
+            fi
+          fi
+
+          # Keep only real plugin dirs
+          filtered=
+          while IFS= read -r name; do
+            [ -z "$name" ] && continue
+            if [ -d "plugins/$name" ]; then
+              filtered+="$name"$'\n'
+            fi
+          done <<< "$plugins"
+          plugins="$(printf '%s' "$filtered" | sed '/^$/d')"
+
+          if [ -z "$plugins" ]; then
+            echo "No plugin changes since ${prev:-beginning}"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "plugins=" >> "$GITHUB_OUTPUT"
+          else
+            echo "Changed plugins:"
+            printf '%s\n' "$plugins"
+            {
+              echo "skip=false"
+              echo "plugins<<EOF"
+              printf '%s\n' "$plugins"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build changed plugins
+        if: steps.changed.outputs.skip != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          while IFS= read -r name; do
+            [ -z "$name" ] && continue
+            lute scripts/build.luau "$name" --out build
+          done <<< "${{ steps.changed.outputs.plugins }}"
+          ls -la build/
 
       - name: Create draft release
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: true
-          files: build/*
-          generate_release_notes: true
+        if: steps.changed.outputs.skip != 'true'
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          assets=(build/*.rbxmx)
+          if [ ${#assets[@]} -eq 0 ]; then
+            echo "No .rbxmx artifacts to upload"
+            exit 1
+          fi
+          gh release create "${GITHUB_REF_NAME}" "${assets[@]}" \
+            --draft \
+            --generate-notes \
+            --title "${GITHUB_REF_NAME}"
