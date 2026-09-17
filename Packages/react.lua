@@ -1,4 +1,4 @@
-local REQUIRED_MODULE = require(script.Parent._Index["roblox_react@17.3.11"]["react"])
+local REQUIRED_MODULE = require(script.Parent._Index["jsdotlua_react@17.2.1"]["react"])
 export type Object = REQUIRED_MODULE.Object 
 export type Binding<T> = REQUIRED_MODULE.Binding<T>
 export type BindingUpdater<T> = REQUIRED_MODULE.BindingUpdater<T>
@@ -11,7 +11,6 @@ export type ElementType = REQUIRED_MODULE.ElementType
 export type Element<C> = REQUIRED_MODULE.Element<C>
 export type Key = REQUIRED_MODULE.Key 
 export type Ref<ElementType> = REQUIRED_MODULE.Ref<ElementType>
-export type RefObject<T = any> = REQUIRED_MODULE.RefObject<T >
 export type Node = REQUIRED_MODULE.Node 
 export type Context<T> = REQUIRED_MODULE.Context<T>
 export type ElementProps<C> = REQUIRED_MODULE.ElementProps<C>

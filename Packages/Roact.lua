@@ -1,1 +1,1 @@
-return require(script.Parent._Index["roblox_roact-compat@17.3.11"]["roact-compat"])
+return require(script.Parent._Index["roblox_roact@1.4.4"]["roact"])
