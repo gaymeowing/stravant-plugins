@@ -1,6 +1,6 @@
 ---
 name: materialflip
-description: >-
+description: >
   Guidance for the MaterialFlip Studio plugin: octahedral orientations, mesh representations, click-to-flip sessions, and React UI. Use when working on plugins/MaterialFlip or material flip.
 ---
 
@@ -8,20 +8,9 @@ description: >-
 
 ## Project Overview
 
-MaterialFlip is a Roblox Studio plugin that lets users flip and rotate material orientation on parts by clicking them. It highlights flippable parts on hover and rotates their surfaces/dimensions on click, keeping the part occupying the same space. It outputs a `.rbxmx` plugin file built via Rojo.
+MaterialFlip is a Roblox Studio plugin that lets users flip and rotate material orientation on parts by clicking them. It highlights flippable parts on hover and rotates their surfaces/dimensions on click, keeping the part occupying the same space.
 
-## Build Commands
-
-```bash
-# From repo root
-# DO NOT build using rojo build -o. Use lute scripts/build.luau (rojo -p under the hood).
-lute scripts/build.luau MaterialFlip
-lute scripts/build.luau MaterialFlip --watch
-lute run scripts/test MaterialFlip
-```
-
-Shared toolchain is root `foreman.toml` / `wally.toml`. PluginGui lives in `libraries/PluginGui` (required as `Src.PluginGui`).
-
+Build/test/deps: see the `plugin` skill.
 
 ## Architecture
 
@@ -64,10 +53,3 @@ MaterialFlip follows the modern GeomTools three-layer plugin architecture (see G
 - Modules returning a single function are lowerCamelCase (e.g., `createMaterialFlipSession`, `doFlip`); modules returning a table are UpperCamelCase (e.g., `Settings`).
 - Undo/redo integrates with `ChangeHistoryService` using recording-based waypoints (`TryBeginRecording`/`FinishRecording`, with a `SetWaypoint` fallback).
 - Tests are `*.spec.luau` files in `plugins/MaterialFlip/src/`, excluded from builds via `globIgnorePaths`.
-
-## Dependencies (via Wally)
-
-- **React / ReactRoblox** — UI framework
-- **Signal (GoodSignal)** — Event system
-- **createSharedToolbar** — Optional toolbar combining with other plugins
-

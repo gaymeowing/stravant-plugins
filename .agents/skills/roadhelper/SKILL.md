@@ -1,6 +1,6 @@
 ---
 name: roadhelper
-description: >-
+description: >
   Guidance for the RoadHelper Studio plugin: procedural road endpoints, handles, RoadMath, and React UI. Use when working on plugins/RoadHelper or procedural roads.
 ---
 
@@ -24,17 +24,7 @@ place. The core mechanic is selecting and manipulating road segment *endpoints*:
 - The UI panel shows the selected endpoint's angles for numeric editing, plus an Add section
   with Straight/Curve buttons that add a segment in front of the camera.
 
-## Build Commands
-
-```bash
-# From repo root
-lute scripts/build.luau RoadHelper
-lute scripts/build.luau RoadHelper --watch
-lute run scripts/test RoadHelper
-```
-
-Shared toolchain is root `foreman.toml` / `wally.toml`. PluginGui lives in `libraries/PluginGui` (required as `Src.PluginGui`).
-
+Build/test/deps: see the `plugin` skill.
 
 ## Architecture
 
@@ -74,4 +64,3 @@ lazy-loads `plugins/RoadHelper/src/main.luau` on first activation.
 
 Same as Redupe: `--!strict`, React via `React.createElement` (aliased `e`), Signal library for
 events, modules returning a single function, undo via ChangeHistoryService recordings.
-

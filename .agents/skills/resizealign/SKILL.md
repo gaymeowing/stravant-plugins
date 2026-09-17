@@ -1,6 +1,6 @@
 ---
 name: resizealign
-description: >-
+description: >
   Guidance for the ResizeAlign Studio plugin: face selection, resize modes, doExtend, and React UI. Use when working on plugins/ResizeAlign or resize align.
 ---
 
@@ -9,20 +9,8 @@ description: >-
 ## Project Overview
 
 ResizeAlign is a Roblox Studio plugin which allows the user to click two faces of parts in 3D space, and have the plugin resize/extend those parts so the faces meet. Seven resize modes are supported: OuterTouch, InnerTouch, WedgeJoin, RoundedJoin, ButtJoint, ExtendUpTo, and ExtendInto.
-It outputs a `.rbxmx` plugin file built via Rojo.
 
-## Build Commands
-
-```bash
-# From repo root
-# DO NOT build using rojo build -o. Use lute scripts/build.luau (rojo -p under the hood).
-lute scripts/build.luau ResizeAlign
-lute scripts/build.luau ResizeAlign --watch
-lute run scripts/test ResizeAlign
-```
-
-Shared toolchain is root `foreman.toml` / `wally.toml`. PluginGui lives in `libraries/PluginGui` (required as `Src.PluginGui`).
-
+Build/test/deps: see the `plugin` skill.
 
 ## Architecture
 
@@ -52,13 +40,4 @@ Three-layer design:
 - The Signal library (`Packages.Signal`) is used for custom events throughout.
 - Modules typically `return` a single function (e.g., `createResizeAlignSession`, `doExtend`) rather than a table of exports.
 - Undo/redo integrates with `ChangeHistoryService` using recording-based waypoints (`TryBeginRecording`/`FinishRecording`).
-
-## Dependencies (via Wally)
-
-- **React / ReactRoblox** — UI framework
-- **DraggerFramework** — 3D handle/manipulator system (authored by stravant)
-- **DraggerHandler** — Simple wrapper around DraggerFramework to activate a basic dragger tool that can move selected objects.
-- **Signal (GoodSignal)** — Event system
-- **Geometry** — Geometric utility library
-- **createSharedToolbar** — Optional toolbar combining with other plugins
 

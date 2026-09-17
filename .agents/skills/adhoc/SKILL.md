@@ -1,6 +1,6 @@
 ---
 name: adhoc
-description: >-
+description: >
   Guidance for the AdHoc (Adhoc Tools) Studio plugin: micro-tool discovery, ToolDefinition lifecycle, settings, and React UI. Use when working on plugins/AdHoc or Adhoc Tools.
 ---
 
@@ -8,19 +8,9 @@ description: >-
 
 ## Project Overview
 
-Adhoc Tools is a Roblox Studio plugin that serves as a container for small, community-requested tools. Unlike other GeomTools plugins which each implement a single operation, Adhoc dynamically discovers and manages a collection of independent micro-tools from `plugins/AdHoc/src/Tools/`. It outputs a `.rbxmx` plugin file built via Rojo.
+Adhoc Tools is a Roblox Studio plugin that serves as a container for small, community-requested tools. Unlike other GeomTools plugins which each implement a single operation, Adhoc dynamically discovers and manages a collection of independent micro-tools from `plugins/AdHoc/src/Tools/`.
 
-## Build Commands
-
-```bash
-# From repo root
-lute scripts/build.luau AdHoc
-lute scripts/build.luau AdHoc --watch
-lute run scripts/test AdHoc
-```
-
-Shared toolchain is root `foreman.toml` / `wally.toml`. PluginGui lives in `libraries/PluginGui` (required as `Src.PluginGui`).
-
+Build/test/deps: see the `plugin` skill.
 
 ## Architecture
 
@@ -48,13 +38,4 @@ Tool-based variant of the three-layer design:
 - The Signal library (`Packages.Signal`) is used for custom events throughout.
 - Tools are auto-discovered from `plugins/AdHoc/src/Tools/` — no hardcoded tool list.
 - Undo/redo integrates with `ChangeHistoryService` using recording-based waypoints.
-
-## Dependencies (via Wally)
-
-- **React / ReactRoblox / RoactCompat** — UI framework
-- **DraggerFramework / DraggerSchemaCore** — 3D handle/manipulator system (authored by stravant)
-- **Roact** — Used by DraggerToolComponent for handle rendering
-- **Signal (GoodSignal)** — Event system
-- **Geometry** — Geometric utilities
-- **createSharedToolbar** — Optional toolbar combining with other plugins
 

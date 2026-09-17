@@ -1,6 +1,6 @@
 ---
 name: ropetool
-description: >-
+description: >
   Guidance for the RopeTool Studio plugin: implicit rope discovery, Add/Move/Color modes, ropeCurve, and React UI. Use when working on plugins/RopeTool or rope editing.
 ---
 
@@ -12,8 +12,7 @@ RopeTool is a Roblox Studio plugin for creating and editing "ropes": contiguous 
 elongated parts (boxes or cylinders) laid end to end, e.g. hanging ropes strung between two
 attachment points. Like PolyMap, the rope structure is *implicitly discovered* from the parts in
 the scene rather than stored anywhere: a discovered rope is a list of vertices joined by edges,
-where each edge remembers which side of it its part sits on. It outputs a `.rbxmx` plugin file
-built via Rojo.
+where each edge remembers which side of it its part sits on.
 
 Modes:
 - **Add** — click two attachment points (snapping to part corners/edges, including mesh edges via
@@ -29,17 +28,7 @@ Modes:
 - **Settings** — global options: the Snapping section ("Other Ropes" / "Geometry Edges"
   checkboxes) gates the two snap tiers used by Add clicks and Move's endpoint grab drags.
 
-## Build Commands
-
-```bash
-# From repo root
-lute scripts/build.luau RopeTool
-lute scripts/build.luau RopeTool --watch
-lute run scripts/test RopeTool
-```
-
-Shared toolchain is root `foreman.toml` / `wally.toml`. PluginGui lives in `libraries/PluginGui` (required as `Src.PluginGui`). Don't change PluginGui unless asked.
-
+Build/test/deps: see the `plugin` skill.
 
 ## Architecture
 
@@ -88,13 +77,3 @@ React UI.
 - Undo/redo integrates with `ChangeHistoryService` using recording-based waypoints; on undo/redo
   the selection is re-resolved by re-discovering the rope from a surviving part (discovery is
   stateless, so there is no mesh rebuild machinery like PolyMap's).
-
-## Dependencies (via Wally)
-
-- **React / ReactRoblox / RoactCompat** — UI framework
-- **DraggerFramework / DraggerSchemaCore / DraggerHandler** — 3D handle/manipulator system
-- **Roact** — Used by DraggerToolComponent for handle rendering
-- **Signal (GoodSignal)** — Event system
-- **Geometry** — Part corner/edge extraction for add-point snapping
-- **createSharedToolbar** — Optional toolbar combining with other plugins
-

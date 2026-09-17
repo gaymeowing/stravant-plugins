@@ -1,6 +1,6 @@
 ---
 name: gapfill
-description: >-
+description: >
   Guidance for the GapFill Studio plugin: edge picking, gap-fill geometry, sessions, and React UI. Use when working on plugins/GapFill or gap fill.
 ---
 
@@ -9,21 +9,10 @@ description: >-
 ## Project Overview
 
 GapFill is a Roblox Studio plugin which allows the user to click edges of two parts in 3d space, and
+
+Build/test/deps: see the `plugin` skill.
 have the plugin generate geometry that "fills the gap" between those edges. The user can choose a
 thickness for the generated geometry.
-It outputs a `.rbxmx` plugin file built via Rojo.
-
-## Build Commands
-
-```bash
-# From repo root
-lute scripts/build.luau GapFill
-lute scripts/build.luau GapFill --watch
-lute run scripts/test GapFill
-```
-
-Shared toolchain is root `foreman.toml` / `wally.toml`. PluginGui lives in `libraries/PluginGui` (required as `Src.PluginGui`).
-
 
 ## Architecture
 
@@ -52,12 +41,3 @@ Three-layer design:
 - The Signal library (`Packages.Signal`) is used for custom events throughout.
 - Modules typically `return` a single function (e.g., `createGapFillSession`, `doFill`) rather than a table of exports.
 - Undo/redo integrates with `ChangeHistoryService` using recording-based waypoints
-
-## Dependencies (via Wally)
-
-- **React / ReactRoblox / RoactCompat** — UI framework
-- **DraggerFramework / DraggerSchemaCore** — 3D handle/manipulator system (authored by stravant)
-- **DraggerHandler** — Simple wrapper around DraggerFramework to activate a basic dragger tool that can move selected objects.
-- **Signal (GoodSignal)** — Event system
-- **createSharedToolbar** — Optional toolbar combining with other plugins
-

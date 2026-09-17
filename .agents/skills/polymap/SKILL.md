@@ -1,6 +1,6 @@
 ---
 name: polymap
-description: >-
+description: >
   Guidance for the PolyMap Studio plugin: triangle mesh editing modes, sessions, overlays, and React UI. Use when working on plugins/PolyMap or polymap terrain meshes.
 ---
 
@@ -8,19 +8,9 @@ description: >-
 
 ## Project Overview
 
-PolyMap is a Roblox Studio plugin that provides a terrain mesh editor. Users can create, edit, and paint triangle meshes built from thin wedge parts. It supports multiple editing modes: Select, Move, Rotate, Add, Delete, Paint, and Generate (grid generation). It outputs a `.rbxmx` plugin file built via Rojo.
+PolyMap is a Roblox Studio plugin that provides a terrain mesh editor. Users can create, edit, and paint triangle meshes built from thin wedge parts. It supports multiple editing modes: Select, Move, Rotate, Add, Delete, Paint, and Generate (grid generation).
 
-## Build Commands
-
-```bash
-# From repo root
-lute scripts/build.luau PolyMap
-lute scripts/build.luau PolyMap --watch
-lute run scripts/test PolyMap
-```
-
-Shared toolchain is root `foreman.toml` / `wally.toml`. PluginGui lives in `libraries/PluginGui` (required as `Src.PluginGui`).
-
+Build/test/deps: see the `plugin` skill.
 
 ## Architecture
 
@@ -53,14 +43,4 @@ Three-layer design:
 - The Signal library (`Packages.Signal`) is used for custom events throughout.
 - Modules typically `return` a single function rather than a table of exports.
 - Undo/redo integrates with `ChangeHistoryService` using recording-based waypoints.
-
-## Dependencies (via Wally)
-
-- **React / ReactRoblox / RoactCompat** — UI framework
-- **DraggerFramework / DraggerSchemaCore** — 3D handle/manipulator system (authored by stravant)
-- **DraggerHandler** — Simple wrapper around DraggerFramework
-- **Roact** — Used by DraggerToolComponent for handle rendering
-- **Signal (GoodSignal)** — Event system
-- **Geometry** — Geometric utilities
-- **createSharedToolbar** — Optional toolbar combining with other plugins
 
