@@ -17,14 +17,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Rokit
-        uses: CompeyDev/setup-rokit@v0.1.2
+      - name: Setup Foreman
+        uses: Roblox/setup-foreman@v3
         with:
-          token: ${{ github.token }}
-          cache: true
-
-      - name: Install Toolchain
-        run: rokit install --no-trust-check
+          token: ${{ secrets.GITHUB_TOKEN }}
+          allow-external-github-orgs: true
 
       - name: Download release assets
         env:

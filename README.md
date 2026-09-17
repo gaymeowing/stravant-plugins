@@ -17,10 +17,10 @@ Shared UI widgets live in `libraries/PluginGui` and are mapped into each plugin 
 
 ## Setup
 
-Install [Rokit](https://github.com/rojo-rbx/rokit) using the instructions in that repo, then:
+Install [Foreman](https://github.com/Roblox/foreman) using the instructions in that repo, then:
 
 ```bash
-rokit install
+foreman install
 wally install
 ```
 
