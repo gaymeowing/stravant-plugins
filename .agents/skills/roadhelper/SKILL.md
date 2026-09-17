@@ -1,6 +1,10 @@
-# CLAUDE.md
+---
+name: roadhelper
+description: >-
+  Guidance for the RoadHelper Studio plugin: procedural road endpoints, handles, RoadMath, and React UI. Use when working on plugins/RoadHelper or procedural roads.
+---
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+# RoadHelper
 
 ## Project Overview
 
@@ -23,38 +27,35 @@ place. The core mechanic is selecting and manipulating road segment *endpoints*:
 ## Build Commands
 
 ```bash
-# Build the plugin (default build task)
-rojo build -p "RoadHelper V1.0.rbxmx"
-
-# Run tests (*.spec.lua files in the src folder); requires the runtests.rbxl place open
-python runtests.py
-
-# Install dependencies (must fix the Luau types after installing)
-wally install
-rojo sourcemap default.project.json --output sourcemap.json
-wally-package-types --sourcemap sourcemap.json Packages
+# From repo root
+lute scripts/build.luau RoadHelper
+lute scripts/build.luau RoadHelper --watch
+lute run scripts/test RoadHelper
 ```
+
+Shared toolchain is root `foreman.toml` / `wally.toml`. PluginGui lives in `libraries/PluginGui` (required as `Src.PluginGui`).
+
 
 ## Architecture
 
-**Entry point:** `loader.server.lua` creates the toolbar button and dock widget, then
-lazy-loads `src/main.lua` on first activation.
+**Entry point:** `plugins/RoadHelper/loader.server.luau` creates the toolbar button and dock widget, then
+lazy-loads `plugins/RoadHelper/src/main.luau` on first activation.
 
-- `src/main.lua` — Orchestrator: plugin activation lifecycle, React UI root, session management.
-- `src/RoadMath.lua` — Pure math: segment descriptors from a ProceduralModel's Size/attributes/
+- `plugins/RoadHelper/src/main.luau` — Orchestrator: plugin activation lifecycle, React UI root, session management.
+- `plugins/RoadHelper/src/RoadMath.luau` — Pure math: segment descriptors from a ProceduralModel's Size/attributes/
   pivot, blue/red endpoint world frames, endpoint-move solving (Size + pivot + Flip), joint
   detection, and Adjust-attribute sign mapping for rotations at either end color.
-- `src/createRoadSession.lua` — Active tool session: mounts a DraggerFramework
+- `plugins/RoadHelper/src/createRoadSession.luau` — Active tool session: mounts a DraggerFramework
   DraggerToolComponent with a custom handle list, tracks the selected endpoint, applies edits
   with ChangeHistoryService recordings.
-- `src/Handles/` — Handle implementations following the DraggerFramework handles protocol
+- `plugins/RoadHelper/src/Handles/` — Handle implementations following the DraggerFramework handles protocol
   (`update`/`hitTest`/`render`/`mouseDown`/`mouseDrag`/`mouseUp`):
-  - `EndpointPickHandles.lua` — clickable markers on every road endpoint.
-  - `EndpointMoveHandles.lua` — arrow handles moving the selected endpoint (adapted from Redupe).
-  - `EndpointRotateHandles.lua` — arc handles editing Adjust angles (adapted from Redupe).
-  - `AddHandles.lua` — left/straight/right segment-append handles on open endpoints.
-- `src/Dragger/` — handle view components (arrows/arcs) carried over from Redupe.
-- `src/RoadHelperGui.lua` + `src/PluginGui/` — React settings panel and reusable components.
+  - `EndpointPickHandles.luau` — clickable markers on every road endpoint.
+  - `EndpointMoveHandles.luau` — arrow handles moving the selected endpoint (adapted from Redupe).
+  - `EndpointRotateHandles.luau` — arc handles editing Adjust angles (adapted from Redupe).
+  - `AddHandles.luau` — left/straight/right segment-append handles on open endpoints.
+- `plugins/RoadHelper/src/Dragger/` — handle view components (arrows/arcs) carried over from Redupe.
+- `plugins/RoadHelper/src/RoadHelperGui.luau` + `libraries/PluginGui/` — React settings panel and shared UI.
 
 ## Key Facts About Road Segments
 
@@ -73,3 +74,4 @@ lazy-loads `src/main.lua` on first activation.
 
 Same as Redupe: `--!strict`, React via `React.createElement` (aliased `e`), Signal library for
 events, modules returning a single function, undo via ChangeHistoryService recordings.
+

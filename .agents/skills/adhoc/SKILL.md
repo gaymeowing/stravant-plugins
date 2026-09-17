@@ -1,55 +1,52 @@
-# CLAUDE.md
+---
+name: adhoc
+description: >-
+  Guidance for the AdHoc (Adhoc Tools) Studio plugin: micro-tool discovery, ToolDefinition lifecycle, settings, and React UI. Use when working on plugins/AdHoc or Adhoc Tools.
+---
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+# AdHoc
 
 ## Project Overview
 
-Adhoc Tools is a Roblox Studio plugin that serves as a container for small, community-requested tools. Unlike other GeomTools plugins which each implement a single operation, Adhoc dynamically discovers and manages a collection of independent micro-tools from `src/Tools/`. It outputs a `.rbxmx` plugin file built via Rojo.
+Adhoc Tools is a Roblox Studio plugin that serves as a container for small, community-requested tools. Unlike other GeomTools plugins which each implement a single operation, Adhoc dynamically discovers and manages a collection of independent micro-tools from `plugins/AdHoc/src/Tools/`. It outputs a `.rbxmx` plugin file built via Rojo.
 
 ## Build Commands
 
 ```bash
-# Build the plugin (default build task)
-rojo build -p "Adhoc Tools v1.0.rbxmx"
-
-# Run tests (*.spec.lua files in the Src folder)
-# Tests can call t.screenshot("name") to capture the viewport (use Read tool to view the output)
-# For UI tests: mount into ScreenGui parented to CoreGui, use ReactRoblox.act to flush rendering
-python runtests.py
-
-# Install dependencies (must fix the Luau types after installing)
-wally install
-rojo sourcemap default.project.json --output sourcemap.json
-wally-package-types --sourcemap sourcemap.json Packages
+# From repo root
+lute scripts/build.luau AdHoc
+lute scripts/build.luau AdHoc --watch
+lute run scripts/test AdHoc
 ```
 
-Tools are managed via Aftman (`aftman.toml`): Rojo 7.6.1. Dependencies are managed via Wally (`wally.toml`).
+Shared toolchain is root `foreman.toml` / `wally.toml`. PluginGui lives in `libraries/PluginGui` (required as `Src.PluginGui`).
+
 
 ## Architecture
 
 Tool-based variant of the three-layer design:
 
 1. **Functionality layer** — Tool modules with lifecycle callbacks.
-   - `src/Tools/*.lua` — Each tool is a self-contained module returning a `ToolDefinition` with Id, Name, Description, and lifecycle callbacks (OnActivated/Deactivated/ViewChanged/Clicked/Released).
-   - `src/ToolTypes.lua` — Type definitions for ToolDefinition and ToolContext.
-   - `src/Dragger/` — 3D handle implementations for RotateSelection tool.
+   - `plugins/AdHoc/src/Tools/*.luau` — Each tool is a self-contained module returning a `ToolDefinition` with Id, Name, Description, and lifecycle callbacks (OnActivated/Deactivated/ViewChanged/Clicked/Released).
+   - `plugins/AdHoc/src/ToolTypes.luau` — Type definitions for ToolDefinition and ToolContext.
+   - `plugins/AdHoc/src/Dragger/` — 3D handle implementations for RotateSelection tool.
 
 2. **Settings layer** — Persistent configuration via `plugin:GetSetting`/`SetSetting`.
-   - `src/Settings.lua` — Settings key `"adhocToolsState"`. Stores pinned tools, per-tool settings, last active tool.
+   - `plugins/AdHoc/src/Settings.luau` — Settings key `"adhocToolsState"`. Stores pinned tools, per-tool settings, last active tool.
 
 3. **UI layer** — React components.
-   - `src/AdhocGui.lua` — Tool list, active tool view with settings panel, pinning UI.
-   - `src/PluginGui/` — Shared reusable components (copied verbatim across plugins).
+   - `plugins/AdHoc/src/AdhocGui.luau` — Tool list, active tool view with settings panel, pinning UI.
+   - `libraries/PluginGui/` — Shared reusable UI components (mapped as `Src.PluginGui`).
 
-**Entry point:** `loader.server.lua` creates the toolbar button and dock widget, then lazy-loads `src/main.lua` on first activation. `src/main.lua` dynamically discovers all tools from `src/Tools/`, manages tool activation/deactivation, handles viewport input (raycasting, mouse events), and mounts the React UI.
+**Entry point:** `plugins/AdHoc/loader.server.luau` creates the toolbar button and dock widget, then lazy-loads `plugins/AdHoc/src/main.luau` on first activation. `plugins/AdHoc/src/main.luau` dynamically discovers all tools from `plugins/AdHoc/src/Tools/`, manages tool activation/deactivation, handles viewport input (raycasting, mouse events), and mounts the React UI.
 
 ## Key Conventions
 
 - All source files use `--!strict` (Luau strict type checking) and many use `--!native` (native codegen).
-- Types are defined with `export type` and collected in `src/PluginGui/Types.lua` for UI-related types.
+- Types are defined with `export type` and collected in `libraries/PluginGui/Types.luau` for UI-related types.
 - React components use `React.createElement` (aliased as `e`) — not JSX.
 - The Signal library (`Packages.Signal`) is used for custom events throughout.
-- Tools are auto-discovered from `src/Tools/` — no hardcoded tool list.
+- Tools are auto-discovered from `plugins/AdHoc/src/Tools/` — no hardcoded tool list.
 - Undo/redo integrates with `ChangeHistoryService` using recording-based waypoints.
 
 ## Dependencies (via Wally)
@@ -60,3 +57,4 @@ Tool-based variant of the three-layer design:
 - **Signal (GoodSignal)** — Event system
 - **Geometry** — Geometric utilities
 - **createSharedToolbar** — Optional toolbar combining with other plugins
+

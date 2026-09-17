@@ -1,6 +1,10 @@
-# CLAUDE.md
+---
+name: ropetool
+description: >-
+  Guidance for the RopeTool Studio plugin: implicit rope discovery, Add/Move/Color modes, ropeCurve, and React UI. Use when working on plugins/RopeTool or rope editing.
+---
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+# RopeTool
 
 ## Project Overview
 
@@ -28,59 +32,51 @@ Modes:
 ## Build Commands
 
 ```bash
-# Build the plugin (default build task)
-rojo build -p "RopeTool v1.0.rbxmx"
-
-# Run tests (*.spec.lua files in the Src folder)
-# Tests can call t.screenshot("name") to capture the viewport (use Read tool to view the output)
-# For UI tests: mount into ScreenGui parented to CoreGui, use ReactRoblox.act to flush rendering
-python runtests.py
-
-# Install dependencies (must fix the Luau types after installing)
-wally install
-rojo sourcemap default.project.json --output sourcemap.json
-wally-package-types --sourcemap sourcemap.json Packages
+# From repo root
+lute scripts/build.luau RopeTool
+lute scripts/build.luau RopeTool --watch
+lute run scripts/test RopeTool
 ```
 
-Tools are managed via Aftman (`aftman.toml`): Rojo 7.6.1. Dependencies are managed via Wally (`wally.toml`).
+Shared toolchain is root `foreman.toml` / `wally.toml`. PluginGui lives in `libraries/PluginGui` (required as `Src.PluginGui`). Don't change PluginGui unless asked.
+
 
 ## Architecture
 
 Three-layer design:
 
 1. **Functionality layer** — Session lifecycle, rope discovery/building, 3D handles.
-   - `src/createRopeSession.lua` — Session lifecycle: Move/Add tools, hover + selection UX,
+   - `plugins/RopeTool/src/createRopeSession.luau` — Session lifecycle: Move/Add tools, hover + selection UX,
      endpoint/sag draggers, add-point snapping, undo/redo via ChangeHistoryService recordings.
-   - `src/RopeGraph.lua` — Implicit discovery: vertices + edges walked from a seed part via
+   - `plugins/RopeTool/src/RopeGraph.luau` — Implicit discovery: vertices + edges walked from a seed part via
      endpoint adjacency and a property-overlap heuristic (shape / cross-section / color / material).
      The chain is trimmed at curvature discontinuities (a joint whose bend reverses against its
      neighbours, e.g. the middle of a W where two ropes meet, or any bend over 60°). Sphere
      endcaps on the chain's end vertices are discovered too (and work as seeds).
-   - `src/buildRope.lua` — Builds/updates the segment parts along the curve, reusing parts in
+   - `plugins/RopeTool/src/buildRope.luau` — Builds/updates the segment parts along the curve, reusing parts in
      place during drags.
-   - `src/ropeCurve.lua` — The parabolic curve: point generation and sag/sway estimation
+   - `plugins/RopeTool/src/ropeCurve.luau` — The parabolic curve: point generation and sag/sway estimation
      (inverse). Sag droops vertically; sway bows horizontally perpendicular to the chord.
-   - `src/Dragger/` — MoveHandles (with optional axis filter for the vertical-only sag handle)
+   - `plugins/RopeTool/src/Dragger/` — MoveHandles (with optional axis filter for the vertical-only sag handle)
      and GrabPointHandle (the freely-draggable endpoint sphere with Add-style snapping), built
      on DraggerFramework.
 
 2. **Settings layer** — Persistent configuration via `plugin:GetSetting`/`SetSetting`.
-   - `src/Settings.lua` — Settings key `"ropeToolState"`. Stores mode, segments, segment type,
+   - `plugins/RopeTool/src/Settings.luau` — Settings key `"ropeToolState"`. Stores mode, segments, segment type,
      grouping, sag, sway, diameter, endcaps, rope color/material, recent colors/materials.
-   - Settings are saved only once, on `plugin.Unloading` (see `src/main.lua`). This is
+   - Settings are saved only once, on `plugin.Unloading` (see `plugins/RopeTool/src/main.luau`). This is
      intentional: the settings are relatively transient, so saving once at shutdown is
      preferable to writing on every edit — losing them to a hard Studio crash is acceptable.
 
 3. **UI layer** — React components.
-   - `src/RopeToolGui.lua` — Main settings panel: mode chips, rope parameters, and the
+   - `plugins/RopeTool/src/RopeToolGui.luau` — Main settings panel: mode chips, rope parameters, and the
      color/material selection UX (shared design with PolyMap's paint panels).
-   - `src/RopeOverlay.lua` — Viewport overlay: hover/selected rope polylines, add-point markers,
+   - `plugins/RopeTool/src/RopeOverlay.luau` — Viewport overlay: hover/selected rope polylines, add-point markers,
      preview curve.
-   - `src/PluginGui/` — Shared reusable components (copied verbatim across plugins, don't change
-     this unless asked).
+   - `libraries/PluginGui/` — Shared reusable UI components (mapped as `Src.PluginGui`); don't change unless asked.
 
-**Entry point:** `loader.server.lua` creates the toolbar button and dock widget, then lazy-loads
-`src/main.lua` on first activation. `src/main.lua` orchestrates session management and mounts the
+**Entry point:** `plugins/RopeTool/loader.server.luau` creates the toolbar button and dock widget, then lazy-loads
+`plugins/RopeTool/src/main.luau` on first activation. `plugins/RopeTool/src/main.luau` orchestrates session management and mounts the
 React UI.
 
 ## Key Conventions
@@ -101,3 +97,4 @@ React UI.
 - **Signal (GoodSignal)** — Event system
 - **Geometry** — Part corner/edge extraction for add-point snapping
 - **createSharedToolbar** — Optional toolbar combining with other plugins
+

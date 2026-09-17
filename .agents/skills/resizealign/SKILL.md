@@ -1,6 +1,10 @@
-# CLAUDE.md
+---
+name: resizealign
+description: >-
+  Guidance for the ResizeAlign Studio plugin: face selection, resize modes, doExtend, and React UI. Use when working on plugins/ResizeAlign or resize align.
+---
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+# ResizeAlign
 
 ## Project Overview
 
@@ -10,47 +14,40 @@ It outputs a `.rbxmx` plugin file built via Rojo.
 ## Build Commands
 
 ```bash
-# Build the plugin to the plugins directory (default build task)
-# DO NOT build using rojo build -o. -p was added recently for plugins and is what we need.
-rojo build -p "ResizeAlign V2.0.rbxmx"
-
-# Run tests (*.spec.lua files in the Src folder)
-# Tests can call t.screenshot("name") to capture the viewport (use Read tool to view the output)
-# For UI tests: mount into ScreenGui parented to CoreGui, use ReactRoblox.act to flush rendering
-python runtests.py
-
-# Install dependencies (must fix the Luau types after installing)
-wally install
-rojo sourcemap default.project.json --output sourcemap.json
-wally-package-types --sourcemap sourcemap.json Packages
+# From repo root
+# DO NOT build using rojo build -o. Use lute scripts/build.luau (rojo -p under the hood).
+lute scripts/build.luau ResizeAlign
+lute scripts/build.luau ResizeAlign --watch
+lute run scripts/test ResizeAlign
 ```
 
-Tools are managed via Aftman (`aftman.toml`): Rojo 7.6.1. Dependencies are managed via Wally (`wally.toml`).
+Shared toolchain is root `foreman.toml` / `wally.toml`. PluginGui lives in `libraries/PluginGui` (required as `Src.PluginGui`).
+
 
 ## Architecture
 
 Three-layer design:
 
 1. **Functionality layer** — Face selection, raycasting, resize geometry.
-   - `src/createResizeAlignSession.lua` — Session lifecycle: face selection FSM (FaceA → FaceB), input handling via UserInputService, edge-threshold smart face detection, DraggerHandler for Ctrl+click mode.
-   - `src/doExtend.lua` — Core resize algorithm: computes how to resize two parts so their selected faces meet according to the chosen mode. Integrates with ChangeHistoryService and JointMaker.
-   - `src/FaceHighlight.lua` — React component rendering face adornments (BoxHandleAdornment + CylinderHandleAdornments) for hover/selected faces.
-   - `src/copyPartProps.lua` — Copies physical/visual properties when creating new parts (used by RoundedJoin fill).
-   - `src/TestTypes.lua` — Types definition of the testing framework, spec files take in a type from here.
+   - `plugins/ResizeAlign/src/createResizeAlignSession.luau` — Session lifecycle: face selection FSM (FaceA → FaceB), input handling via UserInputService, edge-threshold smart face detection, DraggerHandler for Ctrl+click mode.
+   - `plugins/ResizeAlign/src/doExtend.luau` — Core resize algorithm: computes how to resize two parts so their selected faces meet according to the chosen mode. Integrates with ChangeHistoryService and JointMaker.
+   - `plugins/ResizeAlign/src/FaceHighlight.luau` — React component rendering face adornments (BoxHandleAdornment + CylinderHandleAdornments) for hover/selected faces.
+   - `plugins/ResizeAlign/src/copyPartProps.luau` — Copies physical/visual properties when creating new parts (used by RoundedJoin fill).
+   - `plugins/ResizeAlign/src/TestTypes.luau` — Types definition of the testing framework, spec files take in a type from here.
 
 2. **Settings layer** — Persistent configuration that the functionality layer reads.
-   - `src/Settings.lua` — Reads/writes plugin settings (key: `"resizeAlignState"`), exposes ResizeMode, SelectionThreshold, and ClassicUI options.
+   - `plugins/ResizeAlign/src/Settings.luau` — Reads/writes plugin settings (key: `"resizeAlignState"`), exposes ResizeMode, SelectionThreshold, and ClassicUI options.
 
 3. **UI layer** — React components that modify settings and trigger operations.
-   - `src/ResizeAlignGui.lua` — Main settings panel (React) with modern (ChipForToggle) and classic (OperationButton) UI modes. Includes AdornmentOverlay that portals face highlights to CoreGui.
-   - `src/PluginGui/` — Reusable UI components (NumberInput, Vector3Input, Checkbox, ChipToggle, SubPanel, etc.).
+   - `plugins/ResizeAlign/src/ResizeAlignGui.luau` — Main settings panel (React) with modern (ChipForToggle) and classic (OperationButton) UI modes. Includes AdornmentOverlay that portals face highlights to CoreGui.
+   - `libraries/PluginGui/` — Shared reusable UI components (mapped as `Src.PluginGui`).
 
-**Entry point:** `loader.server.lua` creates the toolbar button and dock widget, then lazy-loads `src/main.lua` on first activation. `src/main.lua` orchestrates the three layers — it manages the active session, and mounts the React UI.
+**Entry point:** `plugins/ResizeAlign/loader.server.luau` creates the toolbar button and dock widget, then lazy-loads `plugins/ResizeAlign/src/main.luau` on first activation. `plugins/ResizeAlign/src/main.luau` orchestrates the three layers — it manages the active session, and mounts the React UI.
 
 ## Key Conventions
 
 - All source files use `--!strict` (Luau strict type checking) and many use `--!native` (native codegen).
-- Types are defined with `export type` and collected in `src/PluginGui/Types.lua` for UI-related types.
+- Types are defined with `export type` and collected in `libraries/PluginGui/Types.luau` for UI-related types.
 - React components use `React.createElement` (aliased as `e`) — not JSX.
 - The Signal library (`Packages.Signal`) is used for custom events throughout.
 - Modules typically `return` a single function (e.g., `createResizeAlignSession`, `doExtend`) rather than a table of exports.
@@ -64,3 +61,4 @@ Three-layer design:
 - **Signal (GoodSignal)** — Event system
 - **Geometry** — Geometric utility library
 - **createSharedToolbar** — Optional toolbar combining with other plugins
+
