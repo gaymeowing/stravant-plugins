@@ -1,0 +1,73 @@
+name: Publish
+
+# Publishes built .rbxmx artifacts from a published GitHub release to Roblox via rbxasset.
+# Secrets: ROBLOX_API_KEY. Vars: ROBLOX_CREATOR_ID.
+# Note: rbxasset 0.2.x may reject type=Plugin until Open Cloud supports it.
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          gh release download "${{ github.event.release.tag_name }}" --dir build --pattern '*.rbxmx'
+
+      - name: Install rbxasset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin"
+          url=$(gh api repos/Roblox/rbxasset/releases/latest --jq '.assets[].browser_download_url' | grep -i linux | head -n1)
+          curl -fsSL -o /tmp/rbxasset-asset "$url"
+          if file /tmp/rbxasset-asset | grep -qi 'zip\|archive'; then
+            rm -rf /tmp/rbxasset-out && mkdir /tmp/rbxasset-out
+            unzip -qo /tmp/rbxasset-asset -d /tmp/rbxasset-out
+            bin=$(find /tmp/rbxasset-out -type f -perm -111 | head -n1)
+            install -m 755 "$bin" "$HOME/.local/bin/rbxasset"
+          else
+            install -m 755 /tmp/rbxasset-asset "$HOME/.local/bin/rbxasset"
+          fi
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Publish each plugin
+        env:
+          ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}
+          ROBLOX_CREATOR_ID: ${{ vars.ROBLOX_CREATOR_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ROBLOX_API_KEY:-}" ] || [ -z "${ROBLOX_CREATOR_ID:-}" ]; then
+            echo "ROBLOX_API_KEY and ROBLOX_CREATOR_ID are required"
+            exit 1
+          fi
+          failed=0
+          for rbxmx in build/*.rbxmx; do
+            name=$(basename "$rbxmx" .rbxmx)
+            printf '%s\n' \
+              '[asset]' \
+              "name = \"$name\"" \
+              "description = \"$name Studio plugin\"" \
+              'type = "Plugin"' \
+              "creatorId = $ROBLOX_CREATOR_ID" \
+              "path = \"$rbxmx\"" \
+              > rbxasset.toml
+            echo "Publishing $name..."
+            if ! rbxasset publish; then
+              echo "WARN: rbxasset publish failed for $name (Plugin type may be unsupported by Open Cloud)"
+              failed=1
+            fi
+          done
+          exit "$failed"

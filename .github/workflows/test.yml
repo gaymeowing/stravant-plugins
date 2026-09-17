@@ -1,0 +1,53 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: luau-execution-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Rokit
+        uses: CompeyDev/setup-rokit@v0.1.2
+        with:
+          token: ${{ github.token }}
+          cache: true
+
+      - name: Install Wally packages
+        run: wally install
+
+      - name: Install rocale-cli
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/bin"
+          url=$(gh api repos/Roblox/rocale-cli/releases/latest --jq '.assets[].browser_download_url' | grep -i linux | head -n1)
+          curl -fsSL -o /tmp/rocale-asset "$url"
+          if file /tmp/rocale-asset | grep -qi 'zip\|archive'; then
+            rm -rf /tmp/rocale-out && mkdir /tmp/rocale-out
+            unzip -qo /tmp/rocale-asset -d /tmp/rocale-out
+            bin=$(find /tmp/rocale-out -type f -perm -111 | head -n1)
+            install -m 755 "$bin" "$HOME/.local/bin/rocale-cli"
+          else
+            install -m 755 /tmp/rocale-asset "$HOME/.local/bin/rocale-cli"
+          fi
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/rocale-cli" --help >/dev/null
+
+      - name: Run tests
+        env:
+          ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}
+          ROBLOX_UNIVERSE_ID: ${{ vars.ROBLOX_TEST_UNIVERSE_ID }}
+          ROBLOX_PLACE_ID: ${{ vars.ROBLOX_TEST_PLACE_ID }}
+          TEST_UNIVERSE_ID: ${{ vars.ROBLOX_TEST_UNIVERSE_ID }}
+          TEST_PLACE_ID: ${{ vars.ROBLOX_TEST_PLACE_ID }}
+        run: lute run scripts/test all
