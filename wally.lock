@@ -3,98 +3,108 @@
 registry = "test"
 
 [[package]]
-name = "jsdotlua/boolean"
-version = "1.2.7"
-dependencies = [["number", "jsdotlua/number@1.2.7"]]
+name = "roblox/luau-polyfill"
+version = "1.2.5"
+dependencies = [["Boolean", "roblox/luau-polyfill-boolean@1.2.5"], ["Collections", "roblox/luau-polyfill-collections@1.2.5"], ["Console", "roblox/luau-polyfill-console@1.2.5"], ["ES7Types", "roblox/luau-polyfill-es7-types@1.2.5"], ["InstanceOf", "roblox/luau-polyfill-instance-of@1.2.5"], ["Math", "roblox/luau-polyfill-math@1.2.5"], ["Number", "roblox/luau-polyfill-number@1.2.5"], ["String", "roblox/luau-polyfill-string@1.2.5"], ["Symbol", "roblox/symbol@1.0.1"], ["Timers", "roblox/luau-polyfill-timers@1.2.5"]]
 
 [[package]]
-name = "jsdotlua/collections"
-version = "1.2.7"
-dependencies = [["es7-types", "jsdotlua/es7-types@1.2.7"], ["instance-of", "jsdotlua/instance-of@1.2.7"]]
+name = "roblox/luau-polyfill-boolean"
+version = "1.2.5"
+dependencies = [["Number", "roblox/luau-polyfill-number@1.2.5"]]
 
 [[package]]
-name = "jsdotlua/console"
-version = "1.2.7"
-dependencies = [["collections", "jsdotlua/collections@1.2.7"]]
+name = "roblox/luau-polyfill-collections"
+version = "1.2.5"
+dependencies = [["ES7Types", "roblox/luau-polyfill-es7-types@1.2.5"], ["InstanceOf", "roblox/luau-polyfill-instance-of@1.2.5"]]
 
 [[package]]
-name = "jsdotlua/es7-types"
-version = "1.2.7"
+name = "roblox/luau-polyfill-console"
+version = "1.2.5"
+dependencies = [["Collections", "roblox/luau-polyfill-collections@1.2.5"]]
+
+[[package]]
+name = "roblox/luau-polyfill-es7-types"
+version = "1.2.5"
 dependencies = []
 
 [[package]]
-name = "jsdotlua/instance-of"
-version = "1.2.7"
+name = "roblox/luau-polyfill-instance-of"
+version = "1.2.5"
 dependencies = []
 
 [[package]]
-name = "jsdotlua/luau-polyfill"
-version = "1.2.7"
-dependencies = [["boolean", "jsdotlua/boolean@1.2.7"], ["collections", "jsdotlua/collections@1.2.7"], ["console", "jsdotlua/console@1.2.7"], ["es7-types", "jsdotlua/es7-types@1.2.7"], ["instance-of", "jsdotlua/instance-of@1.2.7"], ["math", "jsdotlua/math@1.2.7"], ["number", "jsdotlua/number@1.2.7"], ["string", "jsdotlua/string@1.2.7"], ["symbol-luau", "jsdotlua/symbol-luau@1.0.1"], ["timers", "jsdotlua/timers@1.2.7"]]
-
-[[package]]
-name = "jsdotlua/math"
-version = "1.2.7"
+name = "roblox/luau-polyfill-math"
+version = "1.2.5"
 dependencies = []
 
 [[package]]
-name = "jsdotlua/number"
-version = "1.2.7"
+name = "roblox/luau-polyfill-number"
+version = "1.2.5"
 dependencies = []
 
 [[package]]
-name = "jsdotlua/promise"
+name = "roblox/luau-polyfill-string"
+version = "1.2.5"
+dependencies = [["ES7Types", "roblox/luau-polyfill-es7-types@1.2.5"], ["Number", "roblox/luau-polyfill-number@1.2.5"]]
+
+[[package]]
+name = "roblox/luau-polyfill-timers"
+version = "1.2.5"
+dependencies = [["Collections", "roblox/luau-polyfill-collections@1.2.5"]]
+
+[[package]]
+name = "roblox/promise"
 version = "3.5.2"
 dependencies = []
 
 [[package]]
-name = "jsdotlua/react"
-version = "17.2.1"
-dependencies = [["luau-polyfill", "jsdotlua/luau-polyfill@1.2.7"], ["shared", "jsdotlua/shared@17.2.1"]]
+name = "roblox/react"
+version = "17.3.11"
+dependencies = [["LuauPolyfill", "roblox/luau-polyfill@1.2.5"], ["ReactGlobals", "roblox/react-globals@17.3.11"], ["Shared", "roblox/react-shared@17.3.11"]]
 
 [[package]]
-name = "jsdotlua/react-reconciler"
-version = "17.2.1"
-dependencies = [["luau-polyfill", "jsdotlua/luau-polyfill@1.2.7"], ["promise", "jsdotlua/promise@3.5.2"], ["react", "jsdotlua/react@17.2.1"], ["scheduler", "jsdotlua/scheduler@17.2.1"], ["shared", "jsdotlua/shared@17.2.1"]]
+name = "roblox/react-globals"
+version = "17.3.11"
+dependencies = [["SafeFlags", "roblox/safe-flags@0.1.2"]]
 
 [[package]]
-name = "jsdotlua/react-roblox"
-version = "17.2.1"
-dependencies = [["luau-polyfill", "jsdotlua/luau-polyfill@1.2.7"], ["react", "jsdotlua/react@17.2.1"], ["react-reconciler", "jsdotlua/react-reconciler@17.2.1"], ["scheduler", "jsdotlua/scheduler@17.2.1"], ["shared", "jsdotlua/shared@17.2.1"]]
+name = "roblox/react-reconciler"
+version = "17.3.11"
+dependencies = [["LuauPolyfill", "roblox/luau-polyfill@1.2.5"], ["Promise", "roblox/promise@3.5.2"], ["React", "roblox/react@17.3.11"], ["ReactGlobals", "roblox/react-globals@17.3.11"], ["SafeFlags", "roblox/safe-flags@0.1.2"], ["Scheduler", "roblox/react-scheduler@17.3.11"], ["Shared", "roblox/react-shared@17.3.11"]]
 
 [[package]]
-name = "jsdotlua/roact-compat"
-version = "17.2.1"
-dependencies = [["luau-polyfill", "jsdotlua/luau-polyfill@1.2.7"], ["react", "jsdotlua/react@17.2.1"], ["react-roblox", "jsdotlua/react-roblox@17.2.1"], ["shared", "jsdotlua/shared@17.2.1"]]
+name = "roblox/react-roblox"
+version = "17.3.11"
+dependencies = [["LuauPolyfill", "roblox/luau-polyfill@1.2.5"], ["React", "roblox/react@17.3.11"], ["ReactGlobals", "roblox/react-globals@17.3.11"], ["ReactReconciler", "roblox/react-reconciler@17.3.11"], ["Scheduler", "roblox/react-scheduler@17.3.11"], ["Shared", "roblox/react-shared@17.3.11"]]
 
 [[package]]
-name = "jsdotlua/scheduler"
-version = "17.2.1"
-dependencies = [["luau-polyfill", "jsdotlua/luau-polyfill@1.2.7"], ["shared", "jsdotlua/shared@17.2.1"]]
+name = "roblox/react-scheduler"
+version = "17.3.11"
+dependencies = [["LuauPolyfill", "roblox/luau-polyfill@1.2.5"], ["ReactGlobals", "roblox/react-globals@17.3.11"], ["SafeFlags", "roblox/safe-flags@0.1.2"], ["Shared", "roblox/react-shared@17.3.11"]]
 
 [[package]]
-name = "jsdotlua/shared"
-version = "17.2.1"
-dependencies = [["luau-polyfill", "jsdotlua/luau-polyfill@1.2.7"]]
-
-[[package]]
-name = "jsdotlua/string"
-version = "1.2.7"
-dependencies = [["es7-types", "jsdotlua/es7-types@1.2.7"], ["number", "jsdotlua/number@1.2.7"]]
-
-[[package]]
-name = "jsdotlua/symbol-luau"
-version = "1.0.1"
-dependencies = []
-
-[[package]]
-name = "jsdotlua/timers"
-version = "1.2.7"
-dependencies = [["collections", "jsdotlua/collections@1.2.7"]]
+name = "roblox/react-shared"
+version = "17.3.11"
+dependencies = [["LuauPolyfill", "roblox/luau-polyfill@1.2.5"], ["ReactGlobals", "roblox/react-globals@17.3.11"], ["SafeFlags", "roblox/safe-flags@0.1.2"]]
 
 [[package]]
 name = "roblox/roact"
 version = "1.4.4"
+dependencies = []
+
+[[package]]
+name = "roblox/roact-compat"
+version = "17.3.11"
+dependencies = [["LuauPolyfill", "roblox/luau-polyfill@1.2.5"], ["React", "roblox/react@17.3.11"], ["ReactGlobals", "roblox/react-globals@17.3.11"], ["ReactRoblox", "roblox/react-roblox@17.3.11"], ["Shared", "roblox/react-shared@17.3.11"]]
+
+[[package]]
+name = "roblox/safe-flags"
+version = "0.1.2"
+dependencies = []
+
+[[package]]
+name = "roblox/symbol"
+version = "1.0.1"
 dependencies = []
 
 [[package]]
@@ -130,4 +140,4 @@ dependencies = []
 [[package]]
 name = "stravant/stravant-plugins"
 version = "0.1.0"
-dependencies = [["DraggerFramework", "stravant/draggerframework@0.1.4"], ["DraggerHandler", "stravant/dragger-handler@0.1.3"], ["DraggerSchemaCore", "stravant/draggerschemacore@0.1.5"], ["Geometry", "stravant/geometry@0.1.3"], ["React", "jsdotlua/react@17.2.1"], ["ReactRoblox", "jsdotlua/react-roblox@17.2.1"], ["Roact", "roblox/roact@1.4.4"], ["RoactCompat", "jsdotlua/roact-compat@17.2.1"], ["Signal", "stravant/goodsignal@0.3.1"], ["createSharedToolbar", "stravant/create-shared-toolbar@0.1.0"]]
+dependencies = [["DraggerFramework", "stravant/draggerframework@0.1.4"], ["DraggerHandler", "stravant/dragger-handler@0.1.3"], ["DraggerSchemaCore", "stravant/draggerschemacore@0.1.5"], ["Geometry", "stravant/geometry@0.1.3"], ["Roact", "roblox/roact@1.4.4"], ["Signal", "stravant/goodsignal@0.3.1"], ["createSharedToolbar", "stravant/create-shared-toolbar@0.1.0"], ["react", "roblox/react@17.3.11"], ["react-roblox", "roblox/react-roblox@17.3.11"], ["roact-compat", "roblox/roact-compat@17.3.11"]]
