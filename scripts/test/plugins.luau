@@ -375,7 +375,7 @@ local function writePluginProjects(plugin: Plugin)
 	local name = plugin.name
 	writeJson(`plugins/{name}/default.project.json`, pluginProject(plugin))
 	if hasTests(plugin) then
-		writeJson(`plugins/{name}/runtests.project.json`, runtestsProject(plugin))
+		writeJson(`plugins/{name}/test.project.json`, runtestsProject(plugin))
 		writeJson(`plugins/{name}/ocale.project.json`, ocaleProject(plugin))
 	end
 end

@@ -106,7 +106,7 @@ end
 
 local function runStudio(plugin: plugins.Plugin): boolean
 	plugins.writePluginProjects(plugin)
-	local projectPath = `plugins/{plugin.name}/runtests.project.json`
+	local projectPath = `plugins/{plugin.name}/test.project.json`
 
 	local ready = false
 	local doneSummary: { passed: number, failed: number, total: number }? = nil

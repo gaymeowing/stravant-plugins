@@ -1,0 +1,23 @@
+{
+	"name": "AdHoc-runtests",
+	"tree": {
+		"$className": "Folder",
+		"Src": {
+			"$path": "src",
+			"PluginGui": {
+				"$path": "../../libraries/PluginGui"
+			}
+		},
+		"Packages": {
+			"$path": {
+				"optional": "../../Packages"
+			}
+		},
+		"Loader": {
+			"$path": "../../scripts/test/runtests.server.luau"
+		},
+		"TestRunner": {
+			"$path": "../../scripts/test/TestRunner.luau"
+		}
+	}
+}
