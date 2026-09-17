@@ -1,15 +1,23 @@
 {
-	"name": "ReDupe v1.0",
+	"name": "ReDupe",
+	"globIgnorePaths": [
+		"**/*.spec.luau"
+	],
 	"tree": {
 		"$className": "Folder",
 		"Src": {
-			"$path": "src"
+			"$path": "src",
+			"PluginGui": {
+				"$path": "../../libraries/PluginGui"
+			}
 		},
 		"Packages": {
-			"$path": "Packages"
+			"$path": {
+				"optional": "../../Packages"
+			}
 		},
 		"Loader": {
-			"$path": "loader.server.lua"
+			"$path": "loader.server.luau"
 		}
 	}
 }

@@ -1,15 +1,23 @@
 {
-	"name": "GapFill",
+	"name": "GapFill-runtests",
 	"tree": {
 		"$className": "Folder",
 		"Src": {
-			"$path": "src"
+			"$path": "src",
+			"PluginGui": {
+				"$path": "../../libraries/PluginGui"
+			}
 		},
 		"Packages": {
-			"$path": "Packages"
+			"$path": {
+				"optional": "../../Packages"
+			}
 		},
 		"Loader": {
-			"$path": "runtests.server.lua"
+			"$path": "../../scripts/test/runtests.server.luau"
+		},
+		"TestRunner": {
+			"$path": "../../scripts/test/TestRunner.luau"
 		}
 	}
 }

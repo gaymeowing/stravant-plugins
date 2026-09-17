@@ -1,18 +1,23 @@
 {
-	"name": "GapFill V2.0",
+	"name": "GapFill",
 	"globIgnorePaths": [
-		"**/*.spec.lua"
+		"**/*.spec.luau"
 	],
 	"tree": {
 		"$className": "Folder",
 		"Src": {
-			"$path": "src"
+			"$path": "src",
+			"PluginGui": {
+				"$path": "../../libraries/PluginGui"
+			}
 		},
 		"Packages": {
-			"$path": "Packages"
+			"$path": {
+				"optional": "../../Packages"
+			}
 		},
 		"Loader": {
-			"$path": "loader.server.lua"
+			"$path": "loader.server.luau"
 		}
 	}
 }
