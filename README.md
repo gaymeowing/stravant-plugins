@@ -17,9 +17,7 @@ Shared UI widgets live in `libraries/PluginGui` and are mapped into each plugin 
 
 ## Setup
 
-### Rokit
-
-Download the latest [Rokit release](https://github.com/rojo-rbx/rokit/releases) for your OS, put `rokit` on your `PATH`, then from repo root (`rokit.toml` pins lute, rojo, StyLua, wally):
+Install [Rokit](https://github.com/rojo-rbx/rokit) using the instructions in that repo, then:
 
 ```bash
 rokit install
