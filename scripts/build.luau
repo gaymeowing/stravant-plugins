@@ -14,7 +14,7 @@ local function usage(): never
 	process.exit(1)
 end
 
-if not fs.exists("rokit.toml") or not fs.exists("libraries/PluginGui") then
+if not fs.exists("foreman.toml") or not fs.exists("libraries/PluginGui") then
 	io.write("Run this from the stravant-plugins repo root.\n")
 	process.exit(1)
 end
