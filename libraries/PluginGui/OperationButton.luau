@@ -1,10 +1,8 @@
-local Plugin = script.Parent.Parent.Parent
-local Packages = Plugin.Packages
+local React = require("../../Packages/React")
+local Colors = require("./Colors")
 
-local React = require(Packages.React)
 local e = React.createElement
 
-local Colors = require("./Colors")
 
 local function OperationButton(props: {
 	Text: string,

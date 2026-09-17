@@ -140,4 +140,4 @@ dependencies = []
 [[package]]
 name = "stravant/stravant-plugins"
 version = "0.1.0"
-dependencies = [["DraggerFramework", "stravant/draggerframework@0.1.4"], ["DraggerHandler", "stravant/dragger-handler@0.1.3"], ["DraggerSchemaCore", "stravant/draggerschemacore@0.1.5"], ["Geometry", "stravant/geometry@0.1.3"], ["Roact", "roblox/roact@1.4.4"], ["Signal", "stravant/goodsignal@0.3.1"], ["createSharedToolbar", "stravant/create-shared-toolbar@0.1.0"], ["react", "roblox/react@17.3.11"], ["react-roblox", "roblox/react-roblox@17.3.11"], ["roact-compat", "roblox/roact-compat@17.3.11"]]
+dependencies = [["DraggerFramework", "stravant/draggerframework@0.1.4"], ["DraggerHandler", "stravant/dragger-handler@0.1.3"], ["DraggerSchemaCore", "stravant/draggerschemacore@0.1.5"], ["Geometry", "stravant/geometry@0.1.3"], ["React", "roblox/react@17.3.11"], ["ReactRoblox", "roblox/react-roblox@17.3.11"], ["Roact", "roblox/roact@1.4.4"], ["Signal", "stravant/goodsignal@0.3.1"], ["createSharedToolbar", "stravant/create-shared-toolbar@0.1.0"], ["roact-compat", "roblox/roact-compat@17.3.11"]]

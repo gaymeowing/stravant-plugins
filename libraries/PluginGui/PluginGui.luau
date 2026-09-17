@@ -1,13 +1,9 @@
 local UserInputService = game:GetService("UserInputService")
-
-local Plugin = script.Parent.Parent.Parent
-local Packages = Plugin.Packages
-local React = require(Packages.React)
-
-local Colors = require("./Colors")
-local HelpGui = require("./HelpGui")
-local OverlayGui = require("./OverlayGui")
 local OperationButton = require("./OperationButton")
+local React = require("../../Packages/React")
+local OverlayGui = require("./OverlayGui")
+local HelpGui = require("./HelpGui")
+local Colors = require("./Colors")
 local Types = require("./Types")
 
 local e = React.createElement

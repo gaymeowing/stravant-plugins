@@ -6,8 +6,8 @@ realm = "shared"
 
 [dependencies]
 Signal = "stravant/goodsignal@0.3.1"
-react = "roblox/react@17.3.11"
-react-roblox = "roblox/react-roblox@17.3.11"
+React = "roblox/react@17.3.11"
+ReactRoblox = "roblox/react-roblox@17.3.11"
 Roact = "roblox/roact@1.4.4"
 roact-compat = "roblox/roact-compat@17.3.11"
 Geometry = "stravant/geometry@0.1.3"

@@ -1,7 +1,4 @@
-
-local Plugin = script.Parent.Parent.Parent
-local Packages = Plugin.Packages
-local React = require(Packages.React)
+local React = require("../../Packages/React")
 
 -- Inactive = plugin's tool is not active
 -- Pending = the tool is active but has no selection to work on

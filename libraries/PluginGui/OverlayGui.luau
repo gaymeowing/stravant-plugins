@@ -1,9 +1,5 @@
 local UserInputService = game:GetService("UserInputService")
-
-local Plugin = script.Parent.Parent.Parent
-local Packages = Plugin.Packages
-
-local React = require(Packages.React)
+local React = require("../../Packages/React")
 
 local e = React.createElement
 

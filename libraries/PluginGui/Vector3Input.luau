@@ -1,10 +1,7 @@
-local Plugin = script.Parent.Parent.Parent
-local Packages = Plugin.Packages
-
-local React = require(Packages.React)
-local e = React.createElement
-
+local React = require("../../Packages/React")
 local NumberInput = require("./NumberInput")
+
+local e = React.createElement
 
 local function Vector3Input(props: {
 	Value: Vector3,

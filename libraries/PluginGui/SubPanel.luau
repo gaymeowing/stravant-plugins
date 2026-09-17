@@ -1,12 +1,8 @@
 local TextService = game:GetService("TextService")
-
-local Plugin = script.Parent.Parent.Parent
-local Packages = Plugin.Packages
-
-local React = require(Packages.React)
-local e = React.createElement
-
+local React = require("../../Packages/React")
 local Colors = require("./Colors")
+
+local e = React.createElement
 
 local function _GoodSubPanel(props: {
 	Title: string,
