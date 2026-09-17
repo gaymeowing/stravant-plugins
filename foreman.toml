@@ -1,0 +1,7 @@
+[tools]
+rocale-cli = { source = "Roblox/rocale-cli", version = "0.1.2" }
+stylua = { source = "JohnnyMorganz/StyLua", version = "2.5.2" }
+rbxasset = { source = "Roblox/rbxasset", version = "0.2.0" }
+wally = { source = "UpliftGames/wally", version = "0.3.2" }
+lute = { source = "luau-lang/lute", version = "=1.0.0" }
+rojo = { source = "rojo-rbx/rojo", version = "7.7.0" }

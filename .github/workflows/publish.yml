@@ -23,6 +23,9 @@ jobs:
           token: ${{ github.token }}
           cache: true
 
+      - name: Install Toolchain
+        run: rokit install --no-trust-check
+
       - name: Download release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -30,24 +33,6 @@ jobs:
           set -euo pipefail
           mkdir -p build
           gh release download "${{ github.event.release.tag_name }}" --dir build --pattern '*.rbxmx'
-
-      - name: Install rbxasset
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          mkdir -p "$HOME/.local/bin"
-          url=$(gh api repos/Roblox/rbxasset/releases/latest --jq '.assets[].browser_download_url' | grep -i linux | head -n1)
-          curl -fsSL -o /tmp/rbxasset-asset "$url"
-          if file /tmp/rbxasset-asset | grep -qi 'zip\|archive'; then
-            rm -rf /tmp/rbxasset-out && mkdir /tmp/rbxasset-out
-            unzip -qo /tmp/rbxasset-asset -d /tmp/rbxasset-out
-            bin=$(find /tmp/rbxasset-out -type f -perm -111 | head -n1)
-            install -m 755 "$bin" "$HOME/.local/bin/rbxasset"
-          else
-            install -m 755 /tmp/rbxasset-asset "$HOME/.local/bin/rbxasset"
-          fi
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
       - name: Publish each plugin
         env:

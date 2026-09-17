@@ -19,6 +19,9 @@ jobs:
           token: ${{ github.token }}
           cache: true
 
+      - name: Install Toolchain
+        run: rokit install --no-trust-check
+
       - name: Install Wally packages
         run: wally install
 
