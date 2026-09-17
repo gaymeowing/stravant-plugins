@@ -1,0 +1,397 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Build all",
+			"type": "shell",
+			"command": "lute",
+			"args": [
+				"scripts/build.luau",
+				"all"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			},
+			"problemMatcher": []
+		},
+		{
+			"label": "Generate Rojo projects",
+			"type": "shell",
+			"command": "lute",
+			"args": [
+				"scripts/build.luau",
+				"generate"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "build",
+			"problemMatcher": [],
+			"runOptions": {
+				"runOn": "folderOpen"
+			},
+			"presentation": {
+				"reveal": "silent",
+				"panel": "shared",
+				"showReuseMessage": false,
+				"clear": false
+			}
+		},
+		{
+			"label": "Test all",
+			"type": "shell",
+			"command": "lute",
+			"args": [
+				"run",
+				"scripts/test",
+				"all"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "test",
+			"problemMatcher": []
+		},
+		{
+			"label": "Build AdHoc",
+			"type": "shell",
+			"command": "lute",
+			"args": [
+				"scripts/build.luau",
+				"AdHoc"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"label": "Build AdHoc (watch)",
+			"type": "shell",
+			"command": "lute",
+			"args": [
+				"scripts/build.luau",
+				"AdHoc",
+				"--watch"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"label": "Test AdHoc",
+			"type": "shell",
+			"command": "lute",
+			"args": [
+				"run",
+				"scripts/test",
+				"AdHoc"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "test",
+			"problemMatcher": []
+		},
+		{
+			"label": "Build GapFill",
+			"type": "shell",
+			"command": "lute",
+			"args": [
+				"scripts/build.luau",
+				"GapFill"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"label": "Build GapFill (watch)",
+			"type": "shell",
+			"command": "lute",
+			"args": [
+				"scripts/build.luau",
+				"GapFill",
+				"--watch"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"label": "Test GapFill",
+			"type": "shell",
+			"command": "lute",
+			"args": [
+				"run",
+				"scripts/test",
+				"GapFill"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "test",
+			"problemMatcher": []
+		},
+		{
+			"label": "Build MaterialFlip",
+			"type": "shell",
+			"command": "lute",
+			"args": [
+				"scripts/build.luau",
+				"MaterialFlip"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"label": "Build MaterialFlip (watch)",
+			"type": "shell",
+			"command": "lute",
+			"args": [
+				"scripts/build.luau",
+				"MaterialFlip",
+				"--watch"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"label": "Test MaterialFlip",
+			"type": "shell",
+			"command": "lute",
+			"args": [
+				"run",
+				"scripts/test",
+				"MaterialFlip"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "test",
+			"problemMatcher": []
+		},
+		{
+			"label": "Build PolyMap",
+			"type": "shell",
+			"command": "lute",
+			"args": [
+				"scripts/build.luau",
+				"PolyMap"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"label": "Build PolyMap (watch)",
+			"type": "shell",
+			"command": "lute",
+			"args": [
+				"scripts/build.luau",
+				"PolyMap",
+				"--watch"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"label": "Test PolyMap",
+			"type": "shell",
+			"command": "lute",
+			"args": [
+				"run",
+				"scripts/test",
+				"PolyMap"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "test",
+			"problemMatcher": []
+		},
+		{
+			"label": "Build ReDupe",
+			"type": "shell",
+			"command": "lute",
+			"args": [
+				"scripts/build.luau",
+				"ReDupe"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"label": "Build ReDupe (watch)",
+			"type": "shell",
+			"command": "lute",
+			"args": [
+				"scripts/build.luau",
+				"ReDupe",
+				"--watch"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"label": "Build ResizeAlign",
+			"type": "shell",
+			"command": "lute",
+			"args": [
+				"scripts/build.luau",
+				"ResizeAlign"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"label": "Build ResizeAlign (watch)",
+			"type": "shell",
+			"command": "lute",
+			"args": [
+				"scripts/build.luau",
+				"ResizeAlign",
+				"--watch"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"label": "Test ResizeAlign",
+			"type": "shell",
+			"command": "lute",
+			"args": [
+				"run",
+				"scripts/test",
+				"ResizeAlign"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "test",
+			"problemMatcher": []
+		},
+		{
+			"label": "Build RoadHelper",
+			"type": "shell",
+			"command": "lute",
+			"args": [
+				"scripts/build.luau",
+				"RoadHelper"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"label": "Build RoadHelper (watch)",
+			"type": "shell",
+			"command": "lute",
+			"args": [
+				"scripts/build.luau",
+				"RoadHelper",
+				"--watch"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"label": "Test RoadHelper",
+			"type": "shell",
+			"command": "lute",
+			"args": [
+				"run",
+				"scripts/test",
+				"RoadHelper"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "test",
+			"problemMatcher": []
+		},
+		{
+			"label": "Build RopeTool",
+			"type": "shell",
+			"command": "lute",
+			"args": [
+				"scripts/build.luau",
+				"RopeTool"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"label": "Build RopeTool (watch)",
+			"type": "shell",
+			"command": "lute",
+			"args": [
+				"scripts/build.luau",
+				"RopeTool",
+				"--watch"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "build",
+			"problemMatcher": []
+		},
+		{
+			"label": "Test RopeTool",
+			"type": "shell",
+			"command": "lute",
+			"args": [
+				"run",
+				"scripts/test",
+				"RopeTool"
+			],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"group": "test",
+			"problemMatcher": []
+		}
+	]
+}

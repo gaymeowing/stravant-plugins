@@ -1,0 +1,14 @@
+Packages/
+plugins/*/Packages/
+sourcemap.json
+*.rbxmx
+*.rbxl
+*.rbxl.lock
+last_screenshot_*.png
+build/
+output.rbxl
+
+default.project.json
+plugins/*/default.project.json
+plugins/*/runtests.project.json
+plugins/*/ocale.project.json
