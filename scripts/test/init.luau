@@ -10,6 +10,8 @@ local plugins = require("@self/../plugins")
 local PORT = 38741
 local CONNECT_TIMEOUT = 30
 local CI_CONNECT_TIMEOUT = 180
+local RUN_TIMEOUT = 120
+local CI_RUN_TIMEOUT = 600
 
 local function usage(): never
 	io.write("Usage: lute run scripts/test <plugin|all> [filter]\n\nPlugins with specs:\n")
@@ -222,22 +224,23 @@ local function launchStudio(placePath: string): () -> ()
 	io.write(`Launching Studio: {studio}\n`)
 	io.write(`Studio stdout/stderr → {logPath}\n`)
 
+	local place = absPath(placePath)
+	-- https://create.roblox.com/docs/studio/command-line-interface
 	local result
 	if isWindows() then
 		result = process.run({
 			"cmd",
 			"/c",
-			`start /b "" "{winPath(studio)}" "{winPath(placePath)}" > "{winPath(logPath)}" 2>&1`,
+			`start /b "" "{winPath(studio)}" --task EditFile --localPlaceFile "{winPath(placePath)}" > "{winPath(logPath)}" 2>&1`,
 		})
 	else
-		-- Background the Studio binary so we keep its stdout/stderr (unlike `open -a`).
 		result = process.run({
 			"sh",
 			"-c",
-			'"$1" "$2" > "$3" 2>&1 &',
+			'"$1" --task EditFile --localPlaceFile "$2" > "$3" 2>&1 &',
 			"_",
 			studio,
-			absPath(placePath),
+			place,
 			logPath,
 		})
 	end
@@ -338,9 +341,11 @@ local function runStudio(plugin: plugins.Plugin): boolean
 	io.write("  Done.\n")
 
 	local timeout = CONNECT_TIMEOUT
+	local runTimeout = RUN_TIMEOUT
 	local flushStudioLog: (() -> ())? = nil
 	if inCi() then
 		timeout = CI_CONNECT_TIMEOUT
+		runTimeout = CI_RUN_TIMEOUT
 		local placeOk, placeOrErr = pcall(writeRuntestsPlace)
 		if not placeOk then
 			httpServer.close()
@@ -368,20 +373,18 @@ local function runStudio(plugin: plugins.Plugin): boolean
 		io.write(`Waiting for Studio on port {PORT}...\n`)
 	end
 
-	local waited = 0
-	local lastHeartbeat = 0
-	while not ready and waited < timeout do
+	local connectDeadline = os.clock() + timeout
+	local lastHeartbeat = 0.0
+	while not ready and os.clock() < connectDeadline do
 		task.wait(0.25)
-		waited += 0.25
-		if flushStudioLog ~= nil then
-			flushStudioLog()
-			if waited - lastHeartbeat >= 10 then
-				lastHeartbeat = waited
-				io.write(`[test] still waiting for Studio websocket… {math.floor(waited)}s / {timeout}s\n`)
-			end
-		end
 		if closed and studioWs == nil then
 			break
+		end
+		local elapsed = timeout - (connectDeadline - os.clock())
+		if flushStudioLog ~= nil and elapsed - lastHeartbeat >= 10 then
+			lastHeartbeat = elapsed
+			flushStudioLog()
+			io.write(`[test] still waiting for Studio websocket… {math.floor(elapsed)}s / {timeout}s\n`)
 		end
 	end
 
@@ -399,9 +402,20 @@ local function runStudio(plugin: plugins.Plugin): boolean
 		return false
 	end
 
-	io.write("Connected!\n\nRunning tests...\n")
-	while doneSummary == nil and not closed do
-		task.wait(0.1)
+	io.write(`Connected!\n\nRunning tests (timeout {runTimeout}s)...\n`)
+	local runDeadline = os.clock() + runTimeout
+	lastHeartbeat = 0.0
+	while doneSummary == nil and not closed and os.clock() < runDeadline do
+		task.wait(0.25)
+		local elapsed = runTimeout - (runDeadline - os.clock())
+		if flushStudioLog ~= nil and elapsed - lastHeartbeat >= 10 then
+			lastHeartbeat = elapsed
+			flushStudioLog()
+		end
+	end
+
+	if flushStudioLog ~= nil then
+		flushStudioLog()
 	end
 
 	httpServer.close()
@@ -411,7 +425,11 @@ local function runStudio(plugin: plugins.Plugin): boolean
 
 	local summary = doneSummary
 	if summary == nil then
-		io.write("\nConnection to Studio lost before results.\n")
+		if not closed and os.clock() >= runDeadline then
+			io.write(`\nTimed out waiting for test results after {runTimeout}s.\n`)
+		else
+			io.write("\nConnection to Studio lost before results.\n")
+		end
 		return false
 	end
 

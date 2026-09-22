@@ -22,9 +22,6 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           allow-external-github-orgs: true
 
-      - name: Install Wally packages
-        run: wally install
-
       - name: Install Roblox Studio
         timeout-minutes: 10
         env:

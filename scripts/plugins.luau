@@ -90,7 +90,11 @@ end
 local function pluginProject(plugin: Plugin): { [string]: any }
 	return {
 		name = plugin.name,
-		globIgnorePaths = { "**/*.spec.luau" },
+		globIgnorePaths = {
+			"**/*.spec.luau",
+			"**/place.project.json",
+			"**/benchmarks.project.json",
+		},
 		tree = pluginTree("src", "../../libraries/PluginGui", "../../Packages", "loader.server.luau", nil),
 	}
 end
@@ -98,6 +102,11 @@ end
 local function runtestsProject(plugin: Plugin): { [string]: any }
 	return {
 		name = `{plugin.name}-runtests`,
+		-- Keep *.spec.luau — TestRunner discovers and runs them from Src.
+		globIgnorePaths = {
+			"**/place.project.json",
+			"**/benchmarks.project.json",
+		},
 		tree = pluginTree(
 			"src",
 			"../../libraries/PluginGui",
@@ -136,6 +145,10 @@ local function rootProject(): { [string]: any }
 
 	return {
 		name = "stravant-plugins",
+		globIgnorePaths = {
+			"**/place.project.json",
+			"**/benchmarks.project.json",
+		},
 		tree = tree,
 	}
 end

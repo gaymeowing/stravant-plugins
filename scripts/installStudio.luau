@@ -175,6 +175,29 @@ local function writeStudioCookie(cookie: string)
 	end
 	fs.writeStringToFile(`{httpStorages}/com.Roblox.RobloxStudio.binarycookies`, buildBinaryCookies(cookies))
 	io.write("Wrote Studio HTTPStorages binarycookies\n")
+
+	-- Modern Studio also reads SharedROBLOSECURITYForStudio from the login
+	-- keychain (acct+label set, svce empty). Missing → Authenticated:NO / -25300.
+	local keychainAccount = "https://www.roblox.com/:SharedROBLOSECURITYForStudio"
+	process.run({ "security", "delete-generic-password", "-a", keychainAccount })
+	local added = process.run({
+		"security",
+		"add-generic-password",
+		"-a",
+		keychainAccount,
+		"-s",
+		"",
+		"-l",
+		keychainAccount,
+		"-w",
+		cookie,
+		"-A", -- allow all apps; avoids interactive keychain prompts on CI
+		"-U",
+	})
+	if not added.ok then
+		error(`Failed to write Studio keychain cookie: {added.stderr}`)
+	end
+	io.write("Wrote Studio keychain SharedROBLOSECURITYForStudio\n")
 end
 
 local home = `{process.homedir()}`
