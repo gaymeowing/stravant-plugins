@@ -108,32 +108,6 @@ local function runtestsProject(plugin: Plugin): { [string]: any }
 	}
 end
 
-local function ocaleProject(plugin: Plugin): { [string]: any }
-	local name = plugin.name
-	return {
-		name = `{name}-ocale`,
-		tree = {
-			["$className"] = "DataModel",
-			Workspace = {
-				["$className"] = "Workspace",
-				["$properties"] = {
-					Name = "runtests",
-				},
-			},
-			ServerScriptService = {
-				["$className"] = "ServerScriptService",
-				Plugin = pluginTree(
-					`plugins/{name}/src`,
-					"libraries/PluginGui",
-					"Packages",
-					nil,
-					"scripts/test/TestRunner.luau"
-				),
-			},
-		},
-	}
-end
-
 local function rootProject(): { [string]: any }
 	local tree: { [string]: any } = {
 		["$className"] = "Folder",
@@ -257,7 +231,6 @@ function plugins.writePluginProjects(plugin: Plugin)
 	writeJson(`plugins/{name}/default.project.json`, pluginProject(plugin))
 	if plugins.hasTests(plugin) then
 		writeJson(`plugins/{name}/test.project.json`, runtestsProject(plugin))
-		writeJson(`plugins/{name}/ocale.project.json`, ocaleProject(plugin))
 	end
 end
 

@@ -28,7 +28,7 @@ lute scripts/build.luau generate          # write gitignored Rojo projects only
 lute scripts/build.luau <PluginName>      # e.g. ResizeAlign
 lute scripts/build.luau all
 lute scripts/build.luau <PluginName> --watch
-lute scripts/build.luau all --out build   # CI / release artifacts
+lute scripts/build.luau all --out build
 ```
 
 Plugins are PascalCase dirs under `plugins/`. Build writes gitignored:
@@ -48,8 +48,7 @@ lute run scripts/test all
 lute run scripts/test <PluginName> <SpecFilter>
 ```
 
-Locally: websocket server + `RunTests.rbxmx` for Studio (place name must be `runtests`).
-In GitHub Actions (`GITHUB_ACTIONS`): `rocale-cli`.
+Builds `RunTests.rbxmx` and waits for Studio over a local websocket. Load that plugin in Studio (Reload Plugins on File Changed works), then open any place.
 
 Specs are `*.spec.luau` under each plugin `src/`. They can call `t.screenshot("name")`. UI tests: mount into `ScreenGui` under `CoreGui`, flush with `ReactRoblox.act`.
 

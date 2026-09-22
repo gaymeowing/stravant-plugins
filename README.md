@@ -56,4 +56,4 @@ lute run scripts/test all
 lute run scripts/test ResizeAlign Settings
 ```
 
-Locally that starts a websocket server and builds `RunTests.rbxmx` for Studio (place name must be `runtests`). In GitHub Actions (`GITHUB_ACTIONS`) it uses `rocale-cli` instead.
+Builds `RunTests.rbxmx` and opens a local websocket. Load that plugin in Studio, then open any place.

@@ -1,8 +1,3 @@
--- Shared Studio test plugin. Only runs when the place is named "runtests".
-if workspace.Name ~= "runtests" then
-	return
-end
-
 _G.__ROACT_17_MOCK_SCHEDULER__ = true
 
 local CaptureService = game:GetService("CaptureService")

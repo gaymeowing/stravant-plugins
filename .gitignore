@@ -1,6 +1,5 @@
 plugins/*/test.project.json
 plugins/*/default.project.json
-plugins/*/ocale.project.json
 last_screenshot_*.png
 default.project.json
 sourcemap.json

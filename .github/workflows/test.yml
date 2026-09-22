@@ -6,12 +6,13 @@ on:
   pull_request:
 
 concurrency:
-  group: luau-execution-${{ github.workflow }}-${{ github.ref }}
+  group: studio-tests-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -24,11 +25,11 @@ jobs:
       - name: Install Wally packages
         run: wally install
 
-      - name: Run tests
+      - name: Install Roblox Studio
+        timeout-minutes: 10
         env:
-          ROBLOX_API_KEY: ${{ secrets.ROBLOX_API_KEY }}
-          ROBLOX_UNIVERSE_ID: ${{ vars.ROBLOX_TEST_UNIVERSE_ID }}
-          ROBLOX_PLACE_ID: ${{ vars.ROBLOX_TEST_PLACE_ID }}
-          TEST_UNIVERSE_ID: ${{ vars.ROBLOX_TEST_UNIVERSE_ID }}
-          TEST_PLACE_ID: ${{ vars.ROBLOX_TEST_PLACE_ID }}
+          ROBLOX_COOKIE: ${{ secrets.ROBLOX_COOKIE }}
+        run: lute scripts/installStudio.luau
+
+      - name: Run tests
         run: lute run scripts/test all

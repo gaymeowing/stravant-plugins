@@ -9,6 +9,7 @@ local plugins = require("../plugins")
 
 local PORT = 38741
 local CONNECT_TIMEOUT = 30
+local CI_CONNECT_TIMEOUT = 180
 
 local function usage(): never
 	io.write("Usage: lute run scripts/test <plugin|all> [filter]\n\nPlugins with specs:\n")
@@ -45,63 +46,179 @@ if target == nil then
 	usage()
 end
 
-local function inGithubActions(): boolean
-	local value = process.env.GITHUB_ACTIONS
+local function inCi(): boolean
+	local value = process.env.GITHUB_ACTIONS or process.env.CI
 	return value ~= nil and value ~= ""
 end
 
-local function envOr(...: string): string?
-	for _, key in { ... } do
-		local value = process.env[key]
-		if value ~= nil and value ~= "" then
-			return value
-		end
+local function isWindows(): boolean
+	local runner = process.env.RUNNER_OS
+	if runner ~= nil then
+		return runner == "Windows"
 	end
-	return nil
+	local uname = process.run({ "uname", "-s" })
+	if uname.ok then
+		return string.find(uname.stdout, "MINGW") ~= nil or string.find(uname.stdout, "Msys") ~= nil
+	end
+	return false
 end
 
-local function runOcale(plugin: plugins.Plugin): boolean
-	plugins.writePluginProjects(plugin)
-	local projectPath = `plugins/{plugin.name}/ocale.project.json`
-	local universeId = envOr("ROBLOX_UNIVERSE_ID", "TEST_UNIVERSE_ID", "ROBLOX_TEST_UNIVERSE_ID")
-	local placeId = envOr("ROBLOX_PLACE_ID", "TEST_PLACE_ID", "ROBLOX_TEST_PLACE_ID")
-	local apiKey = envOr("ROBLOX_API_KEY")
-
-	if universeId == nil or placeId == nil or apiKey == nil then
-		io.write("OCALE requires ROBLOX_API_KEY and universe/place ids (ROBLOX_UNIVERSE_ID / ROBLOX_PLACE_ID).\n")
-		return false
+local function isMac(): boolean
+	local runner = process.env.RUNNER_OS
+	if runner ~= nil then
+		return runner == "macOS"
 	end
+	local uname = process.run({ "uname", "-s" })
+	return uname.ok and string.find(uname.stdout, "Darwin") ~= nil
+end
 
-	io.write(`Running {plugin.name} tests via rocale-cli...\n`)
-	local command = {
-		"rocale-cli",
-		"run",
-		"-u",
-		universeId,
-		"-p",
-		placeId,
-		"--load.project",
-		projectPath,
-		"--script",
-		"scripts/test/ocale.luau",
-	}
-	if filter ~= "all" then
-		table.insert(command, "--lua.globals")
-		table.insert(command, `TEST_FILTER={filter}`)
+local function localAppData(): string
+	local value = process.env.LOCALAPPDATA
+	if value ~= nil and value ~= "" then
+		return value
 	end
+	return `{process.homedir()}/AppData/Local`
+end
 
-	local result = process.run(command, {
-		stdio = "inherit",
-	})
-	if not result.ok then
-		io.write(`rocale-cli failed for {plugin.name} (exit {result.exitcode}).\n`)
-		return false
+local function pluginsDir(): string
+	if isWindows() then
+		return `{localAppData()}/Roblox/Plugins`
 	end
-	return true
+	return `{process.homedir()}/Documents/Roblox/Plugins`
 end
 
 local function encodeMsg(data: { [string]: json.Value }): string
-	return json.serialize(json.object(data))
+	return json.serialize(data)
+end
+
+local function writeRuntestsPlace(): string
+	local projectPath = "scripts/test/runtests-place.project.json"
+	local placePath = "scripts/test/runtests.rbxl"
+	fs.writeStringToFile(
+		projectPath,
+		json.serialize({
+			name = "runtests",
+			tree = {
+				["$className"] = "DataModel",
+				Workspace = {
+					["$className"] = "Workspace",
+					["$properties"] = {
+						Name = "runtests",
+					},
+				},
+				HttpService = {
+					["$className"] = "HttpService",
+					["$properties"] = {
+						HttpEnabled = true,
+					},
+				},
+			},
+		}) .. "\n"
+	)
+	local build = process.run({ "rojo", "build", projectPath, "-o", placePath })
+	if not build.ok then
+		if build.stderr ~= "" then
+			io.write(build.stderr)
+		end
+		error(`Failed to build {placePath}`)
+	end
+	return placePath
+end
+
+local function findStudioExe(): string?
+	if isMac() then
+		local mac = "/Applications/RobloxStudio.app/Contents/MacOS/RobloxStudio"
+		if fs.exists(mac) then
+			return mac
+		end
+		return nil
+	end
+	if not isWindows() then
+		return nil
+	end
+	local versionsDir = `{localAppData()}/Roblox/Versions`
+	if not fs.exists(versionsDir) then
+		return nil
+	end
+	local best: string? = nil
+	for _, entry in fs.listDirectory(versionsDir) do
+		if entry.type ~= "dir" then
+			continue
+		end
+		local candidate = `{versionsDir}/{entry.name}/RobloxStudioBeta.exe`
+		if fs.exists(candidate) then
+			best = candidate
+		end
+	end
+	return best
+end
+
+local function killStudio()
+	if isWindows() then
+		process.run({ "taskkill", "/IM", "RobloxStudioBeta.exe", "/F" })
+	elseif isMac() then
+		process.run({ "pkill", "-x", "RobloxStudio" })
+	end
+end
+
+local function absPath(path: string): string
+	if string.match(path, "^[A-Za-z]:[\\/]") or string.sub(path, 1, 1) == "/" or string.sub(path, 1, 1) == "\\" then
+		return path
+	end
+	return `{process.cwd()}/{path}`
+end
+
+local function winPath(path: string): string
+	return (string.gsub(absPath(path), "/", "\\"))
+end
+
+local function installTestPlugin(rbxmxPath: string)
+	local dir = pluginsDir()
+	if not fs.exists(dir) then
+		fs.createDirectory(dir, { makeParents = true })
+	end
+	local dest = `{dir}/RunTests.rbxmx`
+	if isWindows() then
+		local result = process.run({ "cmd", "/c", `copy /Y "{winPath(rbxmxPath)}" "{winPath(dest)}"` })
+		if not result.ok then
+			error(`Failed to copy {rbxmxPath} → {dest}: {result.stderr}`)
+		end
+	else
+		local result = process.run({ "cp", absPath(rbxmxPath), dest })
+		if not result.ok then
+			error(`Failed to copy {rbxmxPath} → {dest}: {result.stderr}`)
+		end
+	end
+	io.write(`Installed test plugin → {dest}\n`)
+end
+
+local function launchStudio(placePath: string)
+	local studio = findStudioExe()
+	if studio == nil then
+		if isMac() then
+			error("Roblox Studio not found at /Applications/RobloxStudio.app")
+		end
+		error("Roblox Studio not found under %LOCALAPPDATA%\\Roblox\\Versions")
+	end
+	io.write(`Launching Studio: {studio}\n`)
+	local result = if isWindows()
+		then process.run({
+			"cmd",
+			"/c",
+			"start",
+			"",
+			winPath(studio),
+			winPath(placePath),
+		})
+		else process.run({
+			"open",
+			"-a",
+			"RobloxStudio",
+			absPath(placePath),
+		})
+	if not result.ok then
+		error(`Failed to launch Studio: {result.stderr}`)
+	end
 end
 
 local function runStudio(plugin: plugins.Plugin): boolean
@@ -181,7 +298,7 @@ local function runStudio(plugin: plugins.Plugin): boolean
 	})
 
 	io.write("Building test runner...\n")
-	local build = process.run({ "rojo", "build", projectPath, "-p", "RunTests.rbxmx" })
+	local build = process.run({ "rojo", "build", projectPath, "-o", "RunTests.rbxmx" })
 	if not build.ok then
 		if build.stderr ~= "" then
 			io.write(build.stderr)
@@ -191,10 +308,37 @@ local function runStudio(plugin: plugins.Plugin): boolean
 		return false
 	end
 	io.write("  Done.\n")
-	io.write(`Waiting for Studio on port {PORT} (place must be named runtests)...\n`)
+
+	local timeout = CONNECT_TIMEOUT
+	if inCi() then
+		timeout = CI_CONNECT_TIMEOUT
+		local placeOk, placeOrErr = pcall(writeRuntestsPlace)
+		if not placeOk then
+			httpServer.close()
+			io.write(`{placeOrErr}\n`)
+			return false
+		end
+		local placePath = placeOrErr :: string
+
+		killStudio()
+		local installOk, installErr = pcall(installTestPlugin, "RunTests.rbxmx")
+		if not installOk then
+			httpServer.close()
+			io.write(`{installErr}\n`)
+			return false
+		end
+		local launchOk, launchErr = pcall(launchStudio, placePath)
+		if not launchOk then
+			httpServer.close()
+			io.write(`{launchErr}\n`)
+			return false
+		end
+	else
+		io.write(`Waiting for Studio on port {PORT}...\n`)
+	end
 
 	local waited = 0
-	while not ready and waited < CONNECT_TIMEOUT do
+	while not ready and waited < timeout do
 		task.wait(0.1)
 		waited += 0.1
 		if closed and studioWs == nil then
@@ -204,7 +348,10 @@ local function runStudio(plugin: plugins.Plugin): boolean
 
 	if not ready then
 		httpServer.close()
-		io.write(`Timed out waiting for Studio after {CONNECT_TIMEOUT}s.\n`)
+		if inCi() then
+			killStudio()
+		end
+		io.write(`Timed out waiting for Studio after {timeout}s.\n`)
 		return false
 	end
 
@@ -214,6 +361,9 @@ local function runStudio(plugin: plugins.Plugin): boolean
 	end
 
 	httpServer.close()
+	if inCi() then
+		killStudio()
+	end
 
 	local summary = doneSummary
 	if summary == nil then
@@ -234,9 +384,6 @@ local function runOne(plugin: plugins.Plugin): boolean
 	if not plugins.hasTests(plugin) then
 		io.write(`Skipping {plugin.name} (no *.spec.luau).\n`)
 		return true
-	end
-	if inGithubActions() then
-		return runOcale(plugin)
 	end
 	return runStudio(plugin)
 end
