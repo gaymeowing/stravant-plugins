@@ -26,7 +26,7 @@ wally install
 
 ### VS Code
 
-Install [Luau Language Server](https://marketplace.visualstudio.com/items?itemName=JohnnyMorganz.luau-lsp) (JohnnyMorganz).
+Install [Luau Language Server](https://marketplace.visualstudio.com/items?itemName=JohnnyMorganz.luau-lsp).
 
 This repo already has:
 
