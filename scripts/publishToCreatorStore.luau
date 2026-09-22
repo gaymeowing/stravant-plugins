@@ -6,7 +6,6 @@ local net = require("@std/net")
 local task = require("@std/task")
 
 local pluginInfo = require("./pluginInfo")
-local plugins = require("./plugins")
 
 local apiKey = process.env.ROBLOX_API_KEY :: string
 local tag = process.env.TAG :: string
@@ -61,9 +60,7 @@ local function publishRbxmx(path: string)
 	if not name then
 		error(`Not an .rbxmx: {path}`)
 	end
-
-	local plugin = plugins.find(name)
-	if not plugin then
+	if not fs.exists(`plugins/{name}`) then
 		error(`Unknown plugin: {name}`)
 	end
 
