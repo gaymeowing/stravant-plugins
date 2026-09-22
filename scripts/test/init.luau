@@ -192,7 +192,7 @@ local function installTestPlugin(rbxmxPath: string)
 	io.write(`Installed test plugin → {dest}\n`)
 end
 
-local function launchStudio(placePath: string)
+local function launchStudio(placePath: string): () -> ()
 	local studio = findStudioExe()
 	if studio == nil then
 		if isMac() then
@@ -200,25 +200,53 @@ local function launchStudio(placePath: string)
 		end
 		error("Roblox Studio not found under %LOCALAPPDATA%\\Roblox\\Versions")
 	end
+
+	if not fs.exists("build") then
+		fs.createDirectory("build", { makeParents = true })
+	end
+	local logPath = absPath("build/studio-output.log")
+	fs.writeStringToFile(logPath, "")
+	local offset = 0
+
+	local function flushLog()
+		if not fs.exists(logPath) then
+			return
+		end
+		local contents = fs.readFileToString(logPath)
+		if #contents > offset then
+			io.write(string.sub(contents, offset + 1))
+			offset = #contents
+		end
+	end
+
 	io.write(`Launching Studio: {studio}\n`)
-	local result = if isWindows()
-		then process.run({
+	io.write(`Studio stdout/stderr → {logPath}\n`)
+
+	local result
+	if isWindows() then
+		result = process.run({
 			"cmd",
 			"/c",
-			"start",
-			"",
-			winPath(studio),
-			winPath(placePath),
+			`start /b "" "{winPath(studio)}" "{winPath(placePath)}" > "{winPath(logPath)}" 2>&1`,
 		})
-		else process.run({
-			"open",
-			"-a",
-			"RobloxStudio",
+	else
+		-- Background the Studio binary so we keep its stdout/stderr (unlike `open -a`).
+		result = process.run({
+			"sh",
+			"-c",
+			'"$1" "$2" > "$3" 2>&1 &',
+			"_",
+			studio,
 			absPath(placePath),
+			logPath,
 		})
+	end
 	if not result.ok then
+		flushLog()
 		error(`Failed to launch Studio: {result.stderr}`)
 	end
+
+	return flushLog
 end
 
 local function runStudio(plugin: plugins.Plugin): boolean
@@ -310,6 +338,7 @@ local function runStudio(plugin: plugins.Plugin): boolean
 	io.write("  Done.\n")
 
 	local timeout = CONNECT_TIMEOUT
+	local flushStudioLog: (() -> ())? = nil
 	if inCi() then
 		timeout = CI_CONNECT_TIMEOUT
 		local placeOk, placeOrErr = pcall(writeRuntestsPlace)
@@ -327,23 +356,37 @@ local function runStudio(plugin: plugins.Plugin): boolean
 			io.write(`{installErr}\n`)
 			return false
 		end
-		local launchOk, launchErr = pcall(launchStudio, placePath)
+		local launchOk, launchResult = pcall(launchStudio, placePath)
 		if not launchOk then
 			httpServer.close()
-			io.write(`{launchErr}\n`)
+			io.write(`{launchResult}\n`)
 			return false
 		end
+		flushStudioLog = launchResult :: () -> ()
+		io.write(`Waiting for Studio on port {PORT} (timeout {timeout}s)...\n`)
 	else
 		io.write(`Waiting for Studio on port {PORT}...\n`)
 	end
 
 	local waited = 0
+	local lastHeartbeat = 0
 	while not ready and waited < timeout do
-		task.wait(0.1)
-		waited += 0.1
+		task.wait(0.25)
+		waited += 0.25
+		if flushStudioLog ~= nil then
+			flushStudioLog()
+			if waited - lastHeartbeat >= 10 then
+				lastHeartbeat = waited
+				io.write(`[test] still waiting for Studio websocket… {math.floor(waited)}s / {timeout}s\n`)
+			end
+		end
 		if closed and studioWs == nil then
 			break
 		end
+	end
+
+	if flushStudioLog ~= nil then
+		flushStudioLog()
 	end
 
 	if not ready then
@@ -352,6 +395,7 @@ local function runStudio(plugin: plugins.Plugin): boolean
 			killStudio()
 		end
 		io.write(`Timed out waiting for Studio after {timeout}s.\n`)
+		io.write("Studio likely did not sign in — check ROBLOX_COOKIE / Account Session Protection.\n")
 		return false
 	end
 
