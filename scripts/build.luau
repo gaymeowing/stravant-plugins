@@ -4,7 +4,7 @@ local fs = require("@std/fs")
 local task = require("@std/task")
 local lutefs = require("@lute/fs")
 
-local plugins = require("./test/plugins")
+local plugins = require("./plugins")
 
 local function usage(): never
 	io.write("Usage: lute scripts/build.luau <plugin|all|generate> [--watch] [--out <dir>]\n\nPlugins:\n")
