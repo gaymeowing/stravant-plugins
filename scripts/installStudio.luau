@@ -142,6 +142,7 @@ local function writeStudioCookie(cookie: string)
 	local auth = net.request("https://users.roblox.com/v1/users/authenticated", {
 		headers = {
 			Cookie = `.ROBLOSECURITY={cookie}`,
+			["User-Agent"] = "Roblox/Studio",
 		},
 	})
 	if auth.ok then
@@ -177,15 +178,17 @@ local function writeStudioCookie(cookie: string)
 end
 
 local home = `{process.homedir()}`
+-- Keep the full browser cookie value, including `_|WARNING:…|_`. Stripping that
+-- prefix makes users.roblox.com / Studio reject it with 401.
 local cookie = (process.env.ROBLOX_COOKIE :: string):match("^%s*(.-)%s*$") :: string
-if cookie:match("WARNING:") then
-	cookie = (cookie:match("WARNING:[^_]*_(.+)$") or cookie)
-end
+cookie = cookie:gsub("^%.ROBLOSECURITY=", "")
+cookie = cookie:gsub("^ROBLOSECURITY=", "")
 
 io.write("Validating ROBLOX_COOKIE\n")
 local authCheck = net.request("https://users.roblox.com/v1/users/authenticated", {
 	headers = {
 		Cookie = `.ROBLOSECURITY={cookie}`,
+		["User-Agent"] = "Roblox/Studio",
 	},
 })
 if not authCheck.ok then
