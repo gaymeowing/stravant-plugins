@@ -1,100 +1,235 @@
--- Builds changed plugins and creates a draft GitHub release for TAG.
+-- Creates a draft GitHub release per plugin whose PLUGIN.toml Version has no
+-- matching `{Name}@{Version}` release yet (luauberries-style).
 -- Usage: lute scripts/createReleases.luau
+-- Env: GH_TOKEN
 
 local process = require("@std/process")
 local io = require("@std/io")
 local fs = require("@std/fs")
+local json = require("@std/json")
 
-local plugins = require("./plugins")
+local pluginInfo = require("./pluginInfo")
 
-local tag = process.env.TAG :: string
+local REPO_URL = "https://github.com/gaymeowing/stravant-plugins"
+local COMMIT_URL = `{REPO_URL}/commits/`
+local PULL_URL = `{REPO_URL}/pull/`
 
-local function isSharedPath(path: string): boolean
-	return string.match(path, "^libraries/") ~= nil
-		or path == "wally.toml"
-		or path == "wally.lock"
-		or path == "scripts/build.luau"
-		or path == "scripts/plugins.luau"
-		or path == "foreman.toml"
+local pluginNames = {}
+for _, entry in fs.listDirectory("plugins") do
+	if entry.type == "dir" and string.match(entry.name, "^[A-Z][A-Za-z0-9]*$") then
+		table.insert(pluginNames, entry.name)
+	end
+end
+table.sort(pluginNames)
+
+local function releaseExists(tag: string): boolean
+	local result = process.run({ "gh", "release", "view", tag })
+	return result.ok
 end
 
-local function previousTag(): string?
-	local result = process.run({ "git", "describe", "--tags", "--abbrev=0", `{tag}^` })
+local function commitFromTag(tag: string): string?
+	local result = process.run({ "git", "show-ref", "--hash", tag })
 	if not result.ok then
 		return nil
 	end
-	local prev = (result.stdout :: string):match("%S+")
-	if prev == nil or prev == "" then
+	return (result.stdout :: string):match("%x+")
+end
+
+local function latestReleaseTag(pluginName: string): string?
+	local result = process.run({ "git", "tag", "--sort=-creatordate", "-l", `{pluginName}@*` })
+	if not result.ok then
 		return nil
 	end
-	return prev
+	return (result.stdout :: string):match("[^\r\n]+")
 end
 
-local function changedPluginNames(prev: string?): { string }
-	if prev == nil then
-		io.write("No previous tag; releasing all plugins\n")
-		local names = {}
-		for _, plugin in plugins.list() do
-			table.insert(names, plugin.name)
+local function commitUnixTime(commit: string): number?
+	local result = process.run({
+		"git",
+		"show",
+		"--pretty=format:%ad",
+		"--date=unix",
+		"--no-patch",
+		commit,
+	})
+	if not result.ok then
+		return nil
+	end
+	return tonumber((result.stdout :: string):match("%d+"))
+end
+
+local function lastReleasedCommitTime(pluginName: string): number?
+	local tag = latestReleaseTag(pluginName)
+	if tag ~= nil then
+		local commit = commitFromTag(tag)
+		if commit ~= nil then
+			return commitUnixTime(commit)
 		end
-		return names
 	end
 
-	io.write(`Comparing {prev}...{tag}\n`)
-	local diff = process.run({ "git", "diff", "--name-only", `{prev}...{tag}` })
-	if not diff.ok then
-		error(diff.stderr)
+	local result = process.run({
+		"git",
+		"log",
+		"--pretty=format:%H",
+		"-n1",
+		"--",
+		`plugins/{pluginName}`,
+	})
+	if not result.ok then
+		return nil
+	end
+	local commit = (result.stdout :: string):match("%x+")
+	if commit == nil then
+		return nil
+	end
+	return commitUnixTime(commit)
+end
+
+local function commitsAfter(pluginName: string, afterUnix: number): { string }
+	local result = process.run({
+		"git",
+		"log",
+		`--after={afterUnix}`,
+		"--no-merges",
+		"--author-date-order",
+		"--pretty=format:%H",
+		"--",
+		`plugins/{pluginName}`,
+	})
+	if not result.ok or result.stdout == "" then
+		return {}
+	end
+	local commits = {}
+	for hash in string.gmatch(result.stdout :: string, "%x+") do
+		table.insert(commits, hash)
+	end
+	-- git log is newest-first; release notes read oldest-first
+	local reversed = {}
+	for index = #commits, 1, -1 do
+		table.insert(reversed, commits[index])
+	end
+	return reversed
+end
+
+local function commitInfo(commit: string): (string, string)
+	local result = process.run({
+		"git",
+		"show",
+		"-s",
+		"--format=%an%n%s",
+		commit,
+	})
+	if not result.ok then
+		return "unknown", commit
+	end
+	local author, title = string.match(result.stdout :: string, "^([^\r\n]+)\r?\n([^\r\n]*)")
+	return author or "unknown", title or commit
+end
+
+local function mergedPullRequestsAfter(
+	pluginName: string,
+	afterUnix: number
+): { { number: number, title: string, author: string } }
+	local result = process.run({
+		"gh",
+		"pr",
+		"list",
+		"--state",
+		"merged",
+		"--limit",
+		"100",
+		"--json",
+		"number,title,author,mergedAt,files",
+	})
+	if not result.ok then
+		return {}
+	end
+	local data = json.deserialize(result.stdout)
+	if type(data) ~= "table" then
+		return {}
 	end
 
-	local files = {}
-	for line in string.gmatch(diff.stdout :: string, "[^\r\n]+") do
-		if line ~= "" then
-			table.insert(files, line)
+	local pathPrefix = `plugins/{pluginName}/`
+	local pulls = {}
+	for _, pull in data :: { any } do
+		local mergedAt = pull.mergedAt
+		if type(mergedAt) ~= "string" then
+			continue
 		end
-	end
+		-- mergedAt is ISO8601; compare via gh/git roughly by parsing unix if possible.
+		-- Fall back: include if any file touches this plugin and mergedAt sorts after afterUnix via `date`.
+		local mergedUnixResult = process.run({ "date", "-u", "-j", "-f", "%Y-%m-%dT%H:%M:%SZ", mergedAt, "+%s" })
+		if not mergedUnixResult.ok then
+			-- GNU date (ubuntu runners)
+			mergedUnixResult = process.run({ "date", "-u", "-d", mergedAt, "+%s" })
+		end
+		local mergedUnix = tonumber((mergedUnixResult.stdout :: string):match("%d+"))
+		if mergedUnix == nil or mergedUnix <= afterUnix then
+			continue
+		end
 
-	for _, path in files do
-		if isSharedPath(path) then
-			io.write("Shared paths changed; releasing all plugins\n")
-			local names = {}
-			for _, plugin in plugins.list() do
-				table.insert(names, plugin.name)
+		local touchesPlugin = false
+		if type(pull.files) == "table" then
+			for _, file in pull.files do
+				local path = if type(file) == "table" then file.path else nil
+				if type(path) == "string" and string.sub(path, 1, #pathPrefix) == pathPrefix then
+					touchesPlugin = true
+					break
+				end
 			end
-			return names
 		end
+		if not touchesPlugin then
+			continue
+		end
+
+		local author = "unknown"
+		if type(pull.author) == "table" then
+			local login = (pull.author :: { login: string? }).login
+			if type(login) == "string" then
+				author = login
+			end
+		end
+
+		table.insert(pulls, {
+			number = pull.number,
+			title = pull.title,
+			author = author,
+		})
+	end
+	return pulls
+end
+
+local function buildNotes(pluginName: string, afterUnix: number): string
+	local lines = { "## What's changed", "" }
+
+	for _, pull in mergedPullRequestsAfter(pluginName, afterUnix) do
+		table.insert(lines, `* {pull.title} by @{pull.author} in {PULL_URL}{pull.number}`)
 	end
 
-	local seen: { [string]: boolean } = {}
-	local names = {}
-	for _, path in files do
-		local name = string.match(path, "^plugins/([^/]+)/")
-		if name and not seen[name] and fs.exists(`plugins/{name}`) and fs.type(`plugins/{name}`) == "dir" then
-			seen[name] = true
-			table.insert(names, name)
-		end
+	for _, commit in commitsAfter(pluginName, afterUnix) do
+		local author, title = commitInfo(commit)
+		table.insert(lines, `* {title} by @{author} in [{commit}]({COMMIT_URL}{commit})`)
 	end
-	table.sort(names)
-	return names
+
+	if #lines == 2 then
+		table.insert(lines, "* No commits since the previous release.")
+	end
+
+	return table.concat(lines, "\n")
 end
 
-local names = changedPluginNames(previousTag())
-if #names == 0 then
-	io.write("No plugin changes; skipping release\n")
-	process.exit(0)
-end
+local function releasePlugin(pluginName: string)
+	local version = pluginInfo(pluginName).version
+	local releaseTag = `{pluginName}@{version}`
 
-io.write("Changed plugins:\n")
-for _, name in names do
-	io.write(`  {name}\n`)
-end
+	io.write(`Releasing {releaseTag}\n`)
 
-if fs.exists("build") then
-	fs.removeDirectory("build", { recursive = true })
-end
-fs.createDirectory("build", { makeParents = true })
+	if fs.exists("build") then
+		fs.removeDirectory("build", { recursive = true })
+	end
+	fs.createDirectory("build", { makeParents = true })
 
-for _, name in names do
-	local build = process.run({ "lute", "scripts/build.luau", name, "--out", "build" })
+	local build = process.run({ "lute", "scripts/build.luau", pluginName, "--out", "build" })
 	if not build.ok then
 		if build.stdout ~= "" then
 			io.write(build.stdout)
@@ -104,38 +239,52 @@ for _, name in names do
 	if build.stdout ~= "" then
 		io.write(build.stdout)
 	end
-end
 
-local assets = {}
-for _, entry in fs.listDirectory("build") do
-	if entry.type == "file" and entry.name:match("%.rbxmx$") then
-		table.insert(assets, `build/{entry.name}`)
+	local asset = `build/{pluginName}.rbxmx`
+	if not fs.exists(asset) then
+		error(`Missing build artifact {asset}`)
+	end
+
+	local afterUnix = lastReleasedCommitTime(pluginName) or 0
+	local notes = buildNotes(pluginName, afterUnix)
+	local notesFile = `build/{pluginName}-notes.md`
+	fs.writeStringToFile(notesFile, notes)
+
+	local created = process.run({
+		"gh",
+		"release",
+		"create",
+		releaseTag,
+		"--draft",
+		"--title",
+		`{pluginName} v{version}`,
+		"--notes-file",
+		notesFile,
+		asset,
+	})
+	if not created.ok then
+		error(created.stderr)
+	end
+	if created.stdout ~= "" then
+		io.write(created.stdout)
 	end
 end
-table.sort(assets)
-if #assets == 0 then
-	error("No .rbxmx artifacts to upload")
+
+local released = 0
+for _, pluginName in pluginNames do
+	if not fs.exists(`plugins/{pluginName}/PLUGIN.toml`) then
+		continue
+	end
+	local version = pluginInfo(pluginName).version
+	local releaseTag = `{pluginName}@{version}`
+	if releaseExists(releaseTag) then
+		io.write(`{releaseTag} already exists; skipping\n`)
+		continue
+	end
+	releasePlugin(pluginName)
+	released += 1
 end
 
-local args = {
-	"gh",
-	"release",
-	"create",
-	tag,
-	"--draft",
-	"--generate-notes",
-	"--title",
-	tag,
-}
-for _, asset in assets do
-	table.insert(args, asset)
-end
-
-io.write(`Creating draft release {tag} with {#assets} asset(s)\n`)
-local created = process.run(args)
-if not created.ok then
-	error(created.stderr)
-end
-if created.stdout ~= "" then
-	io.write(created.stdout)
+if released == 0 then
+	io.write("No unreleased PLUGIN.toml versions; nothing to do\n")
 end
