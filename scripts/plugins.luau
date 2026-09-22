@@ -6,126 +6,7 @@ export type Plugin = {
 	output: string,
 }
 
-local KEY_ORDER = {
-	"$className",
-	"$path",
-	"$optional",
-	"$properties",
-	"optional",
-	"name",
-	"globIgnorePaths",
-	"tree",
-	"Src",
-	"PluginGui",
-	"Packages",
-	"Loader",
-	"TestRunner",
-	"Workspace",
-	"ServerScriptService",
-	"Plugin",
-	"version",
-	"tasks",
-	"label",
-	"type",
-	"command",
-	"args",
-	"options",
-	"cwd",
-	"group",
-	"kind",
-	"isDefault",
-	"problemMatcher",
-	"runOptions",
-	"runOn",
-	"presentation",
-	"reveal",
-	"panel",
-	"showReuseMessage",
-	"clear",
-}
-
-local keyRank = {} :: { [string]: number }
-for index, key in KEY_ORDER do
-	keyRank[key] = index
-end
-
-local function sortedKeys(object: json.Object): { string }
-	local keys = {} :: { string }
-	for key in object do
-		if type(key) == "string" then
-			table.insert(keys, key)
-		end
-	end
-	table.sort(keys, function(a, b)
-		local rankA = keyRank[a] or 1000
-		local rankB = keyRank[b] or 1000
-		if rankA ~= rankB then
-			return rankA < rankB
-		end
-		return a < b
-	end)
-	return keys
-end
-
-local function encode(value: json.Value, depth: number): string
-	local valueType = type(value)
-	if valueType == "boolean" then
-		return if value then "true" else "false"
-	elseif valueType == "number" then
-		return tostring(value)
-	elseif valueType == "string" then
-		return json.serialize(value)
-	elseif valueType ~= "table" then
-		error(`cannot encode {valueType}`)
-	end
-
-	local indent = string.rep("\t", depth)
-	local inner = indent .. "\t"
-	local asObject = json.asObject(value)
-	if asObject ~= nil then
-		local keys = sortedKeys(asObject)
-		if #keys == 0 then
-			return "{}"
-		end
-		local parts = { "{\n" }
-		for index, key in keys do
-			table.insert(parts, inner)
-			table.insert(parts, json.serialize(key))
-			table.insert(parts, ": ")
-			table.insert(parts, encode(asObject[key], depth + 1))
-			if index < #keys then
-				table.insert(parts, ",\n")
-			else
-				table.insert(parts, "\n")
-			end
-		end
-		table.insert(parts, indent)
-		table.insert(parts, "}")
-		return table.concat(parts)
-	end
-
-	local array = value :: json.Array
-	if #array == 0 then
-		return "[]"
-	end
-	local parts = { "[\n" }
-	for index, child in array do
-		table.insert(parts, inner)
-		table.insert(parts, encode(child, depth + 1))
-		if index < #array then
-			table.insert(parts, ",\n")
-		else
-			table.insert(parts, "\n")
-		end
-	end
-	table.insert(parts, indent)
-	table.insert(parts, "]")
-	return table.concat(parts)
-end
-
-local function obj(props: { [string]: json.Value }): json.Object
-	return json.object(props)
-end
+local plugins = {}
 
 local function pluginTree(
 	srcPath: string,
@@ -133,34 +14,34 @@ local function pluginTree(
 	packagesPath: string,
 	loaderPath: string?,
 	testRunnerPath: string?
-): json.Object
-	local tree = {
+): { [string]: any }
+	local tree: { [string]: any } = {
 		["$className"] = "Folder",
-		Src = obj({
+		Src = {
 			["$path"] = srcPath,
-			PluginGui = obj({
+			PluginGui = {
 				["$path"] = pluginGuiPath,
-			}),
-		}),
-		Packages = obj({
-			["$path"] = obj({
+			},
+		},
+		Packages = {
+			["$path"] = {
 				optional = packagesPath,
-			}),
-		}),
-	} :: { [string]: json.Value }
+			},
+		},
+	}
 
 	if loaderPath ~= nil then
-		tree.Loader = obj({
+		tree.Loader = {
 			["$path"] = loaderPath,
-		})
+		}
 	end
 	if testRunnerPath ~= nil then
-		tree.TestRunner = obj({
+		tree.TestRunner = {
 			["$path"] = testRunnerPath,
-		})
+		}
 	end
 
-	return obj(tree)
+	return tree
 end
 
 local function discover(): { Plugin }
@@ -196,7 +77,7 @@ end
 -- listdir yields; lute forbids that during require.
 local cached: { Plugin }? = nil
 
-local function list(): { Plugin }
+function plugins.list(): { Plugin }
 	local existing = cached
 	if existing ~= nil then
 		return existing
@@ -206,16 +87,16 @@ local function list(): { Plugin }
 	return discovered
 end
 
-local function pluginProject(plugin: Plugin): json.Object
-	return obj({
+local function pluginProject(plugin: Plugin): { [string]: any }
+	return {
 		name = plugin.name,
 		globIgnorePaths = { "**/*.spec.luau" },
 		tree = pluginTree("src", "../../libraries/PluginGui", "../../Packages", "loader.server.luau", nil),
-	})
+	}
 end
 
-local function runtestsProject(plugin: Plugin): json.Object
-	return obj({
+local function runtestsProject(plugin: Plugin): { [string]: any }
+	return {
 		name = `{plugin.name}-runtests`,
 		tree = pluginTree(
 			"src",
@@ -224,22 +105,22 @@ local function runtestsProject(plugin: Plugin): json.Object
 			"../../scripts/test/runtests.server.luau",
 			"../../scripts/test/TestRunner.luau"
 		),
-	})
+	}
 end
 
-local function ocaleProject(plugin: Plugin): json.Object
+local function ocaleProject(plugin: Plugin): { [string]: any }
 	local name = plugin.name
-	return obj({
+	return {
 		name = `{name}-ocale`,
-		tree = obj({
+		tree = {
 			["$className"] = "DataModel",
-			Workspace = obj({
+			Workspace = {
 				["$className"] = "Workspace",
-				["$properties"] = obj({
+				["$properties"] = {
 					Name = "runtests",
-				}),
-			}),
-			ServerScriptService = obj({
+				},
+			},
+			ServerScriptService = {
 				["$className"] = "ServerScriptService",
 				Plugin = pluginTree(
 					`plugins/{name}/src`,
@@ -248,28 +129,28 @@ local function ocaleProject(plugin: Plugin): json.Object
 					nil,
 					"scripts/test/TestRunner.luau"
 				),
-			}),
-		}),
-	})
+			},
+		},
+	}
 end
 
-local function rootProject(): json.Object
-	local tree = {
+local function rootProject(): { [string]: any }
+	local tree: { [string]: any } = {
 		["$className"] = "Folder",
-		Src = obj({
+		Src = {
 			["$className"] = "Folder",
-			PluginGui = obj({
+			PluginGui = {
 				["$path"] = "libraries/PluginGui",
-			}),
-		}),
-		Packages = obj({
-			["$path"] = obj({
+			},
+		},
+		Packages = {
+			["$path"] = {
 				optional = "Packages",
-			}),
-		}),
-	} :: { [string]: json.Value }
+			},
+		},
+	}
 
-	for _, plugin in list() do
+	for _, plugin in plugins.list() do
 		local name = plugin.name
 		tree[name] = pluginTree(
 			`plugins/{name}/src`,
@@ -279,20 +160,20 @@ local function rootProject(): json.Object
 		)
 	end
 
-	return obj({
+	return {
 		name = "stravant-plugins",
-		tree = obj(tree),
-	})
+		tree = tree,
+	}
 end
 
-local function cwdOptions(): json.Object
-	return obj({
+local function cwdOptions(): { [string]: any }
+	return {
 		cwd = "${workspaceFolder}",
-	})
+	}
 end
 
-local function shellTask(label: string, args: { string }, group: json.Value, extra: json.Object?): json.Object
-	local task = obj({
+local function shellTask(label: string, args: { string }, group: any, extra: { [string]: any }?): { [string]: any }
+	local task: { [string]: any } = {
 		label = label,
 		type = "shell",
 		command = "lute",
@@ -300,7 +181,7 @@ local function shellTask(label: string, args: { string }, group: json.Value, ext
 		options = cwdOptions(),
 		group = group,
 		problemMatcher = {},
-	})
+	}
 	if extra ~= nil then
 		for key, value in extra do
 			if type(key) == "string" then
@@ -311,11 +192,11 @@ local function shellTask(label: string, args: { string }, group: json.Value, ext
 	return task
 end
 
-local function writeJson(path: string, value: json.Object)
-	fs.writeStringToFile(path, encode(value, 0) .. "\n")
+local function writeJson(path: string, value: any)
+	fs.writeStringToFile(path, json.serialize(value) .. "\n")
 end
 
-local function hasTests(plugin: Plugin): boolean
+function plugins.hasTests(plugin: Plugin): boolean
 	local function hasSpecIn(dir: string): boolean
 		for _, entry in fs.listDirectory(dir) do
 			local entryType = entry.type
@@ -338,49 +219,49 @@ local function hasTests(plugin: Plugin): boolean
 	return hasSpecIn(src)
 end
 
-local function vscodeTasks(): json.Object
+local function vscodeTasks(): { [string]: any }
 	local tasks = {
-		shellTask("Build all", { "scripts/build.luau", "all" }, obj({
+		shellTask("Build all", { "scripts/build.luau", "all" }, {
 			kind = "build",
 			isDefault = true,
-		})),
-		shellTask("Generate Rojo projects", { "scripts/build.luau", "generate" }, "build", obj({
-			runOptions = obj({
+		}),
+		shellTask("Generate Rojo projects", { "scripts/build.luau", "generate" }, "build", {
+			runOptions = {
 				runOn = "folderOpen",
-			}),
-			presentation = obj({
+			},
+			presentation = {
 				reveal = "silent",
 				panel = "shared",
 				showReuseMessage = false,
 				clear = false,
-			}),
-		})),
+			},
+		}),
 		shellTask("Test all", { "run", "scripts/test", "all" }, "test"),
 	}
-	for _, plugin in list() do
+	for _, plugin in plugins.list() do
 		local name = plugin.name
 		table.insert(tasks, shellTask(`Build {name}`, { "scripts/build.luau", name }, "build"))
 		table.insert(tasks, shellTask(`Build {name} (watch)`, { "scripts/build.luau", name, "--watch" }, "build"))
-		if hasTests(plugin) then
+		if plugins.hasTests(plugin) then
 			table.insert(tasks, shellTask(`Test {name}`, { "run", "scripts/test", name }, "test"))
 		end
 	end
-	return obj({
+	return {
 		version = "2.0.0",
 		tasks = tasks,
-	})
+	}
 end
 
-local function writePluginProjects(plugin: Plugin)
+function plugins.writePluginProjects(plugin: Plugin)
 	local name = plugin.name
 	writeJson(`plugins/{name}/default.project.json`, pluginProject(plugin))
-	if hasTests(plugin) then
+	if plugins.hasTests(plugin) then
 		writeJson(`plugins/{name}/test.project.json`, runtestsProject(plugin))
 		writeJson(`plugins/{name}/ocale.project.json`, ocaleProject(plugin))
 	end
 end
 
-local function writeRootProject()
+function plugins.writeRootProject()
 	cached = nil
 	writeJson("default.project.json", rootProject())
 end
@@ -389,16 +270,16 @@ local function writeVscodeTasks()
 	writeJson(".vscode/tasks.json", vscodeTasks())
 end
 
-local function writeAllProjects()
-	writeRootProject()
+function plugins.writeAllProjects()
+	plugins.writeRootProject()
 	writeVscodeTasks()
-	for _, plugin in list() do
-		writePluginProjects(plugin)
+	for _, plugin in plugins.list() do
+		plugins.writePluginProjects(plugin)
 	end
 end
 
-local function find(name: string): Plugin?
-	for _, plugin in list() do
+function plugins.find(name: string): Plugin?
+	for _, plugin in plugins.list() do
 		if plugin.name == name then
 			return plugin
 		end
@@ -406,11 +287,4 @@ local function find(name: string): Plugin?
 	return nil
 end
 
-return {
-	list = list,
-	find = find,
-	hasTests = hasTests,
-	writePluginProjects = writePluginProjects,
-	writeRootProject = writeRootProject,
-	writeAllProjects = writeAllProjects,
-}
+return table.freeze(plugins)
