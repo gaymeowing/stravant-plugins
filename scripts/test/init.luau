@@ -5,7 +5,7 @@ local json = require("@std/json")
 local task = require("@std/task")
 local server = require("@lute/net/server")
 
-local plugins = require("../plugins")
+local plugins = require("@self/../plugins")
 
 local PORT = 38741
 local CONNECT_TIMEOUT = 30
