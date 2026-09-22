@@ -43,12 +43,12 @@ Enable **Reload Plugins on File Changed** in Studio so rebuilt `.rbxmx` reloads.
 ## Test
 
 ```bash
-lute run scripts/test <PluginName>
+lute run scripts/test RoadHelper
+lute run scripts/test RopeTool ResizeAlign redupe
 lute run scripts/test all
-lute run scripts/test <PluginName> <SpecFilter>
 ```
 
-Builds `RunTests.rbxmx` and waits for Studio over a local websocket. Load that plugin in Studio (Reload Plugins on File Changed works), then open any place.
+Builds `RunTests.rbxmx` and waits for Studio over a local websocket. Load that plugin in Studio (Reload Plugins on File Changed works), then open any place. Plugin names are case-insensitive.
 
 Specs are `*.spec.luau` under each plugin `src/`. They can call `t.screenshot("name")`. UI tests: mount into `ScreenGui` under `CoreGui`, flush with `ReactRoblox.act`.
 

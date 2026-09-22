@@ -3,15 +3,24 @@ _G.__ROACT_17_MOCK_SCHEDULER__ = true
 local CaptureService = game:GetService("CaptureService")
 local HttpService = game:GetService("HttpService")
 
-local TestRunner = require(script.Parent.TestRunner)
+local TestRunner = require("./TestRunner")
 
-local WS_URL = "ws://localhost:38741"
+local WEBSOCKET_URL = "ws://localhost:38741"
 
-local function sendJson(ws: WebSocketClient, data: { [string]: any })
-	ws:Send(HttpService:JSONEncode(data))
+type RunMessage = {
+	type: string?,
+	filter: string?,
+}
+
+local websocket = HttpService:CreateWebStreamClient(Enum.WebStreamClientType.WebSocket, {
+	Url = WEBSOCKET_URL,
+})
+
+local function sendJson(data: { [string]: any })
+	websocket:Send(HttpService:JSONEncode(data))
 end
 
-local function takeScreenshot(ws: WebSocketClient, name: string?)
+local function takeScreenshot(name: string?)
 	local done = false
 	local success = false
 	local captureOk, captureErr = pcall(function()
@@ -22,7 +31,7 @@ local function takeScreenshot(ws: WebSocketClient, name: string?)
 	end)
 	if not captureOk then
 		warn("[RunTests] Screenshot failed: " .. tostring(captureErr))
-		sendJson(ws, { type = "screenshot", success = false, name = name })
+		sendJson({ type = "screenshot", success = false, name = name })
 		return
 	end
 
@@ -31,20 +40,24 @@ local function takeScreenshot(ws: WebSocketClient, name: string?)
 		task.wait(0.1)
 		waited += 0.1
 	end
-	sendJson(ws, { type = "screenshot", success = success, name = name })
+	sendJson({ type = "screenshot", success = success, name = name })
 end
 
-local function runTests(ws: WebSocketClient, filter: string)
-	local src = script.Parent.Src
+local function runTests(filter: string)
+	local src = (script.Parent :: any):FindFirstChild("Src") :: Instance
+
 	local summary = TestRunner.run(src, plugin, filter, {
-		screenshot = function(name: string?)
-			takeScreenshot(ws, name)
-		end,
+		screenshot = takeScreenshot,
 		onOutput = function(message: string)
-			sendJson(ws, { type = "output", message = message })
+			sendJson({ type = "output", message = message })
 		end,
-		onResult = function(result)
-			sendJson(ws, {
+		onResult = function(result: {
+			name: string,
+			status: "pass" | "fail",
+			error: string?,
+			duration: number,
+		})
+			sendJson({
 				type = "result",
 				name = result.name,
 				status = result.status,
@@ -53,7 +66,7 @@ local function runTests(ws: WebSocketClient, filter: string)
 			})
 		end,
 	})
-	sendJson(ws, {
+	sendJson({
 		type = "done",
 		passed = summary.passed,
 		failed = summary.failed,
@@ -61,33 +74,28 @@ local function runTests(ws: WebSocketClient, filter: string)
 	})
 end
 
-local ws: WebSocketClient = HttpService:CreateWebStreamClient(
-	Enum.WebStreamClientType.WebSocket,
-	{ Url = WS_URL }
-)
-
-ws.Opened:Connect(function()
-	sendJson(ws, { type = "ready" })
+websocket.Opened:Connect(function()
+	sendJson({ type = "ready" })
 end)
 
-ws.MessageReceived:Connect(function(message: string)
-	local ok, data = pcall(HttpService.JSONDecode, HttpService, message)
-	if not ok then
-		warn("[RunTests] Failed to decode message: " .. message)
-		return
-	end
+websocket.MessageReceived:Connect(function(message: string)
+	local data = HttpService:JSONDecode(message) :: RunMessage
 
 	if data.type == "run" then
 		local filter = data.filter or "all"
-		sendJson(ws, { type = "output", message = "Running tests with filter: " .. filter })
+		sendJson({ type = "output", message = "Running tests with filter: " .. filter })
 
-		local runOk, runErr = pcall(runTests, ws, filter)
+		-- pcall of a void function is typed as returning only boolean; return a value so we get the error too.
+		local runOk, runErr = pcall(function()
+			runTests(filter)
+			return true
+		end)
 		if not runOk then
-			sendJson(ws, {
+			sendJson({
 				type = "output",
 				message = "Fatal error running tests: " .. tostring(runErr),
 			})
-			sendJson(ws, {
+			sendJson({
 				type = "done",
 				passed = 0,
 				failed = 1,
@@ -96,5 +104,3 @@ ws.MessageReceived:Connect(function(message: string)
 		end
 	end
 end)
-
-ws.Closed:Connect(function() end)

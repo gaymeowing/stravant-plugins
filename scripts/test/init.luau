@@ -1,271 +1,121 @@
 local process = require("@std/process")
-local io = require("@std/io")
 local fs = require("@std/fs")
 local json = require("@std/json")
 local task = require("@std/task")
 local server = require("@lute/net/server")
-
-local plugins = require("@self/../plugins")
+local richterm = require("@batteries/richterm")
 
 local PORT = 38741
 local CONNECT_TIMEOUT = 30
-local CI_CONNECT_TIMEOUT = 180
 local RUN_TIMEOUT = 120
-local CI_RUN_TIMEOUT = 600
 
-local function usage(): never
-	io.write("Usage: lute run scripts/test <plugin|all> [filter]\n\nPlugins with specs:\n")
-	for _, plugin in plugins.list() do
-		if plugins.hasTests(plugin) then
-			io.write(`  {plugin.name}\n`)
-		end
-	end
-	process.exit(1)
+local pluginNames = {}
+for _, entry in fs.listDirectory("plugins") do
+	table.insert(pluginNames, entry.name)
 end
 
-if not fs.exists("foreman.toml") or not fs.exists("libraries/PluginGui") then
-	io.write("Run this from the stravant-plugins repo root.\n")
-	process.exit(1)
+local function findPluginName(name: string): string?
+	local needle = string.lower(name)
+	for _, pluginName in pluginNames do
+		if string.lower(pluginName) == needle then
+			return pluginName
+		end
+	end
+	return nil
+end
+
+local function hasTests(pluginName: string): boolean
+	local function hasSpecIn(dir: string): boolean
+		for _, entry in fs.listDirectory(dir) do
+			if entry.type == "file" and string.sub(entry.name, -10) == ".spec.luau" then
+				return true
+			elseif entry.type == "dir" and string.sub(entry.name, 1, 1) ~= "." then
+				if hasSpecIn(`{dir}/{entry.name}`) then
+					return true
+				end
+			end
+		end
+		return false
+	end
+
+	local src = `plugins/{pluginName}/src`
+	if not fs.exists(src) then
+		return false
+	end
+	return hasSpecIn(src)
+end
+
+local function writeTestProject(pluginName: string)
+	fs.writeStringToFile(`plugins/{pluginName}/test.project.json`, json.serialize({
+		name = `{pluginName}-runtests`,
+		globIgnorePaths = {
+			"**/place.project.json",
+			"**/benchmarks.project.json",
+		},
+		tree = {
+			["$className"] = "Folder",
+			Src = {
+				["$path"] = "src",
+				PluginGui = {
+					["$path"] = "../../libraries/PluginGui",
+				},
+			},
+			Packages = {
+				["$path"] = {
+					optional = "../../Packages",
+				},
+			},
+			Loader = {
+				["$path"] = "../../scripts/test/runtests.server.luau",
+			},
+			TestRunner = {
+				["$path"] = "../../scripts/test/TestRunner.luau",
+			},
+		},
+	}) .. "\n")
 end
 
 local args = process.args
-local target: string? = nil
+local selected: { string } = {}
+local seen: { [string]: boolean } = {}
+
+local secondArg = args[2]
+
+if (secondArg and string.lower(secondArg) == "all") or not secondArg then
+	selected = pluginNames
+else
+	for index = 2, #args do
+		local arg = args[index]
+		local pluginName = findPluginName(arg)
+
+		if not pluginName then
+			print(`Unknown plugin: {arg}`)
+			process.exit(1)
+		else
+			if not seen[pluginName] then
+				seen[pluginName] = true
+				table.insert(selected, pluginName)
+			end
+		end
+	end
+end
+
 local filter = "all"
 
-for index = 2, #args do
-	local arg = args[index]
-	if target == nil then
-		target = arg
-	elseif filter == "all" then
-		filter = arg
-	else
-		io.write(`Unknown argument: {arg}\n`)
-		usage()
-	end
-end
-
-if target == nil then
-	usage()
-end
-
-local function inCi(): boolean
-	local value = process.env.GITHUB_ACTIONS or process.env.CI
-	return value ~= nil and value ~= ""
-end
-
-local function isWindows(): boolean
-	local runner = process.env.RUNNER_OS
-	if runner ~= nil then
-		return runner == "Windows"
-	end
-	local uname = process.run({ "uname", "-s" })
-	if uname.ok then
-		return string.find(uname.stdout, "MINGW") ~= nil or string.find(uname.stdout, "Msys") ~= nil
-	end
-	return false
-end
-
-local function isMac(): boolean
-	local runner = process.env.RUNNER_OS
-	if runner ~= nil then
-		return runner == "macOS"
-	end
-	local uname = process.run({ "uname", "-s" })
-	return uname.ok and string.find(uname.stdout, "Darwin") ~= nil
-end
-
-local function localAppData(): string
-	local value = process.env.LOCALAPPDATA
-	if value ~= nil and value ~= "" then
-		return value
-	end
-	return `{process.homedir()}/AppData/Local`
-end
-
-local function pluginsDir(): string
-	if isWindows() then
-		return `{localAppData()}/Roblox/Plugins`
-	end
-	return `{process.homedir()}/Documents/Roblox/Plugins`
-end
-
-local function encodeMsg(data: { [string]: json.Value }): string
-	return json.serialize(data)
-end
-
-local function writeRuntestsPlace(): string
-	local projectPath = "scripts/test/runtests-place.project.json"
-	local placePath = "scripts/test/runtests.rbxl"
-	fs.writeStringToFile(
-		projectPath,
-		json.serialize({
-			name = "runtests",
-			tree = {
-				["$className"] = "DataModel",
-				Workspace = {
-					["$className"] = "Workspace",
-					["$properties"] = {
-						Name = "runtests",
-					},
-				},
-				HttpService = {
-					["$className"] = "HttpService",
-					["$properties"] = {
-						HttpEnabled = true,
-					},
-				},
-			},
-		}) .. "\n"
-	)
-	local build = process.run({ "rojo", "build", projectPath, "-o", placePath })
-	if not build.ok then
-		if build.stderr ~= "" then
-			io.write(build.stderr)
-		end
-		error(`Failed to build {placePath}`)
-	end
-	return placePath
-end
-
-local function findStudioExe(): string?
-	if isMac() then
-		local mac = "/Applications/RobloxStudio.app/Contents/MacOS/RobloxStudio"
-		if fs.exists(mac) then
-			return mac
-		end
-		return nil
-	end
-	if not isWindows() then
-		return nil
-	end
-	local versionsDir = `{localAppData()}/Roblox/Versions`
-	if not fs.exists(versionsDir) then
-		return nil
-	end
-	local best: string? = nil
-	for _, entry in fs.listDirectory(versionsDir) do
-		if entry.type ~= "dir" then
-			continue
-		end
-		local candidate = `{versionsDir}/{entry.name}/RobloxStudioBeta.exe`
-		if fs.exists(candidate) then
-			best = candidate
-		end
-	end
-	return best
-end
-
-local function killStudio()
-	if isWindows() then
-		process.run({ "taskkill", "/IM", "RobloxStudioBeta.exe", "/F" })
-	elseif isMac() then
-		process.run({ "pkill", "-x", "RobloxStudio" })
-	end
-end
-
-local function absPath(path: string): string
-	if string.match(path, "^[A-Za-z]:[\\/]") or string.sub(path, 1, 1) == "/" or string.sub(path, 1, 1) == "\\" then
-		return path
-	end
-	return `{process.cwd()}/{path}`
-end
-
-local function winPath(path: string): string
-	return (string.gsub(absPath(path), "/", "\\"))
-end
-
-local function installTestPlugin(rbxmxPath: string)
-	local dir = pluginsDir()
-	if not fs.exists(dir) then
-		fs.createDirectory(dir, { makeParents = true })
-	end
-	local dest = `{dir}/RunTests.rbxmx`
-	if isWindows() then
-		local result = process.run({ "cmd", "/c", `copy /Y "{winPath(rbxmxPath)}" "{winPath(dest)}"` })
-		if not result.ok then
-			error(`Failed to copy {rbxmxPath} → {dest}: {result.stderr}`)
-		end
-	else
-		local result = process.run({ "cp", absPath(rbxmxPath), dest })
-		if not result.ok then
-			error(`Failed to copy {rbxmxPath} → {dest}: {result.stderr}`)
-		end
-	end
-	io.write(`Installed test plugin → {dest}\n`)
-end
-
-local function launchStudio(placePath: string): () -> ()
-	local studio = findStudioExe()
-	if studio == nil then
-		if isMac() then
-			error("Roblox Studio not found at /Applications/RobloxStudio.app")
-		end
-		error("Roblox Studio not found under %LOCALAPPDATA%\\Roblox\\Versions")
-	end
-
-	if not fs.exists("build") then
-		fs.createDirectory("build", { makeParents = true })
-	end
-	local logPath = absPath("build/studio-output.log")
-	fs.writeStringToFile(logPath, "")
-	local offset = 0
-
-	local function flushLog()
-		if not fs.exists(logPath) then
-			return
-		end
-		local contents = fs.readFileToString(logPath)
-		if #contents > offset then
-			io.write(string.sub(contents, offset + 1))
-			offset = #contents
-		end
-	end
-
-	io.write(`Launching Studio: {studio}\n`)
-	io.write(`Studio stdout/stderr → {logPath}\n`)
-
-	local place = absPath(placePath)
-	-- https://create.roblox.com/docs/studio/command-line-interface
-	local result
-	if isWindows() then
-		result = process.run({
-			"cmd",
-			"/c",
-			`start /b "" "{winPath(studio)}" --task EditFile --localPlaceFile "{winPath(placePath)}" > "{winPath(logPath)}" 2>&1`,
-		})
-	else
-		result = process.run({
-			"sh",
-			"-c",
-			'"$1" --task EditFile --localPlaceFile "$2" > "$3" 2>&1 &',
-			"_",
-			studio,
-			place,
-			logPath,
-		})
-	end
-	if not result.ok then
-		flushLog()
-		error(`Failed to launch Studio: {result.stderr}`)
-	end
-
-	return flushLog
-end
-
-local function runStudio(plugin: plugins.Plugin): boolean
-	plugins.writePluginProjects(plugin)
-	local projectPath = `plugins/{plugin.name}/test.project.json`
+local function runStudio(pluginName: string): boolean
+	writeTestProject(pluginName)
+	local projectPath = `plugins/{pluginName}/test.project.json`
 
 	local ready = false
 	local doneSummary: { passed: number, failed: number, total: number }? = nil
-	local studioWs: server.ServerWebSocket? = nil
+	local studioWebsocket: server.ServerWebSocket? = nil
 	local closed = false
 
 	local httpServer = server.serve({
 		hostname = "127.0.0.1",
 		port = PORT,
-		handler = function(request, srv)
-			if srv:upgrade(request) then
+		handler = function(request, netServer)
+			if netServer:upgrade(request) then
 				return nil
 			end
 			return {
@@ -274,196 +124,129 @@ local function runStudio(plugin: plugins.Plugin): boolean
 			}
 		end,
 		websocket = {
-			open = function(ws)
-				studioWs = ws
+			open = function(websocket)
+				studioWebsocket = websocket
 			end,
-			message = function(ws, message)
-				local text = if type(message) == "buffer" then buffer.tostring(message) else message :: string
-				local ok, data = pcall(json.deserialize, text)
-				if not ok or type(data) ~= "table" then
-					io.write(`Bad message from Studio: {text}\n`)
+			message = function(websocket, rawMessage)
+				local text = if type(rawMessage) == "buffer" then buffer.tostring(rawMessage) else rawMessage :: string
+				local data = json.deserialize(text)
+				if type(data) ~= "table" then
+					print(`Bad message from Studio: {text}`)
 					return
 				end
-				local msg = data :: { [string]: any }
-				local msgType = msg.type
+				local message = data :: { [string]: any }
+				local messageType = message.type
 
-				if msgType == "ready" then
+				if messageType == "ready" then
 					ready = true
-					ws:send(encodeMsg({
+					websocket:send(json.serialize({
 						type = "run",
 						filter = filter,
 					}))
-				elseif msgType == "output" then
-					io.write(`  {tostring(msg.message)}\n`)
-				elseif msgType == "result" then
-					local name = tostring(msg.name or "?")
-					local status = tostring(msg.status or "?")
-					local duration = tonumber(msg.duration) or 0
+				elseif messageType == "output" then
+					print(`\t{message.message}`)
+				elseif messageType == "result" then
+					local name = message.name or "?"
+					local status = message.status or "?"
+					local duration = tonumber(message.duration) or 0
 					if status == "pass" then
-						io.write(`  \27[32mPASS\27[0m  {name} ({duration}ms)\n`)
+						print(`\t{richterm.green("PASS")}\t{name} ({duration}ms)`)
 					else
-						io.write(`  \27[31mFAIL\27[0m  {name}\n`)
-						if msg.error then
-							io.write(`        {tostring(msg.error)}\n`)
+						print(`\t{richterm.red("FAIL")}\t{name}`)
+						if message.error then
+							print(`\t\t{message.error}`)
 						end
 					end
-				elseif msgType == "screenshot" then
-					local name = tostring(msg.name or "screenshot")
-					if msg.success then
-						io.write(`  \27[36mSCREENSHOT\27[0m  {name}\n`)
+				elseif messageType == "screenshot" then
+					local name = message.name or "screenshot"
+					if message.success then
+						print(`\t{richterm.cyan("SCREENSHOT")}\t{name}`)
 					else
-						io.write(`  \27[33mSCREENSHOT\27[0m  {name} (failed)\n`)
+						print(`\t{richterm.yellow("SCREENSHOT")}\t{name} (failed)`)
 					end
-				elseif msgType == "done" then
+				elseif messageType == "done" then
 					doneSummary = {
-						passed = tonumber(msg.passed) or 0,
-						failed = tonumber(msg.failed) or 0,
-						total = tonumber(msg.total) or 0,
+						passed = tonumber(message.passed) or 0,
+						failed = tonumber(message.failed) or 0,
+						total = tonumber(message.total) or 0,
 					}
 				end
 			end,
-			close = function(_ws, _code, _message)
+			close = function(_websocket, _code, _message)
 				closed = true
 			end,
 		},
 	})
 
-	io.write("Building test runner...\n")
+	print("Building test runner...")
 	local build = process.run({ "rojo", "build", projectPath, "-o", "RunTests.rbxmx" })
 	if not build.ok then
 		if build.stderr ~= "" then
-			io.write(build.stderr)
+			print(build.stderr)
 		end
 		httpServer.close()
-		io.write(`Failed to build {projectPath}\n`)
+		print(`Failed to build {projectPath}`)
 		return false
 	end
-	io.write("  Done.\n")
+	print("\tDone. Load RunTests.rbxmx in Studio, then open any place.")
+	print(`Waiting for Studio on port {PORT}...`)
 
-	local timeout = CONNECT_TIMEOUT
-	local runTimeout = RUN_TIMEOUT
-	local flushStudioLog: (() -> ())? = nil
-	if inCi() then
-		timeout = CI_CONNECT_TIMEOUT
-		runTimeout = CI_RUN_TIMEOUT
-		local placeOk, placeOrErr = pcall(writeRuntestsPlace)
-		if not placeOk then
-			httpServer.close()
-			io.write(`{placeOrErr}\n`)
-			return false
-		end
-		local placePath = placeOrErr :: string
-
-		killStudio()
-		local installOk, installErr = pcall(installTestPlugin, "RunTests.rbxmx")
-		if not installOk then
-			httpServer.close()
-			io.write(`{installErr}\n`)
-			return false
-		end
-		local launchOk, launchResult = pcall(launchStudio, placePath)
-		if not launchOk then
-			httpServer.close()
-			io.write(`{launchResult}\n`)
-			return false
-		end
-		flushStudioLog = launchResult :: () -> ()
-		io.write(`Waiting for Studio on port {PORT} (timeout {timeout}s)...\n`)
-	else
-		io.write(`Waiting for Studio on port {PORT}...\n`)
-	end
-
-	local connectDeadline = os.clock() + timeout
-	local lastHeartbeat = 0.0
+	local connectDeadline = os.clock() + CONNECT_TIMEOUT
 	while not ready and os.clock() < connectDeadline do
 		task.wait(0.25)
-		if closed and studioWs == nil then
+		if closed and studioWebsocket == nil then
 			break
 		end
-		local elapsed = timeout - (connectDeadline - os.clock())
-		if flushStudioLog ~= nil and elapsed - lastHeartbeat >= 10 then
-			lastHeartbeat = elapsed
-			flushStudioLog()
-			io.write(`[test] still waiting for Studio websocket… {math.floor(elapsed)}s / {timeout}s\n`)
-		end
-	end
-
-	if flushStudioLog ~= nil then
-		flushStudioLog()
 	end
 
 	if not ready then
 		httpServer.close()
-		if inCi() then
-			killStudio()
-		end
-		io.write(`Timed out waiting for Studio after {timeout}s.\n`)
-		io.write("Studio likely did not sign in — check ROBLOX_COOKIE / Account Session Protection.\n")
+		print(`Timed out waiting for Studio after {CONNECT_TIMEOUT}s.`)
 		return false
 	end
 
-	io.write(`Connected!\n\nRunning tests (timeout {runTimeout}s)...\n`)
-	local runDeadline = os.clock() + runTimeout
-	lastHeartbeat = 0.0
+	print("Connected!\n\nRunning tests...")
+	local runDeadline = os.clock() + RUN_TIMEOUT
 	while doneSummary == nil and not closed and os.clock() < runDeadline do
 		task.wait(0.25)
-		local elapsed = runTimeout - (runDeadline - os.clock())
-		if flushStudioLog ~= nil and elapsed - lastHeartbeat >= 10 then
-			lastHeartbeat = elapsed
-			flushStudioLog()
-		end
-	end
-
-	if flushStudioLog ~= nil then
-		flushStudioLog()
 	end
 
 	httpServer.close()
-	if inCi() then
-		killStudio()
-	end
 
 	local summary = doneSummary
 	if summary == nil then
 		if not closed and os.clock() >= runDeadline then
-			io.write(`\nTimed out waiting for test results after {runTimeout}s.\n`)
+			print(`\nTimed out waiting for test results after {RUN_TIMEOUT}s.`)
 		else
-			io.write("\nConnection to Studio lost before results.\n")
+			print("\nConnection to Studio lost before results.")
 		end
 		return false
 	end
 
-	io.write("\n")
+	print("")
 	if summary.failed > 0 then
-		io.write(`Results: \27[32m{summary.passed} passed\27[0m, \27[31m{summary.failed} failed\27[0m, {summary.total} total\n`)
+		print(
+			`Results: {richterm.green(`{summary.passed} passed`)}, {richterm.red(`{summary.failed} failed`)}, {summary.total} total`
+		)
 		return false
 	end
-	io.write(`Results: \27[32m{summary.passed} passed\27[0m, {summary.total} total\n`)
+	print(`Results: {richterm.green(`{summary.passed} passed`)}, {summary.total} total`)
 	return true
 end
 
-local function runOne(plugin: plugins.Plugin): boolean
-	if not plugins.hasTests(plugin) then
-		io.write(`Skipping {plugin.name} (no *.spec.luau).\n`)
+local function runOne(pluginName: string): boolean
+	if not hasTests(pluginName) then
+		print(`Skipping {pluginName} (no *.spec.luau).`)
 		return true
 	end
-	return runStudio(plugin)
+	return runStudio(pluginName)
 end
 
 local ok = true
-if target == "all" then
-	for _, plugin in plugins.list() do
-		if not runOne(plugin) then
-			ok = false
-		end
+for _, pluginName in selected do
+	if not runOne(pluginName) then
+		ok = false
 	end
-else
-	local plugin = plugins.find(target)
-	if plugin == nil then
-		io.write(`Unknown plugin: {target}\n`)
-		usage()
-	end
-	ok = runOne(plugin)
 end
 
 process.exit(if ok then 0 else 1)

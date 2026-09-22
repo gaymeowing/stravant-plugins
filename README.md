@@ -52,8 +52,8 @@ Enable **Reload Plugins on File Changed** in Studio so the built `.rbxmx` reload
 
 ```bash
 lute run scripts/test RoadHelper
+lute run scripts/test RopeTool ResizeAlign redupe
 lute run scripts/test all
-lute run scripts/test ResizeAlign Settings
 ```
 
 Builds `RunTests.rbxmx` and opens a local websocket. Load that plugin in Studio, then open any place.

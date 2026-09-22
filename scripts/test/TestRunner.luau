@@ -152,7 +152,10 @@ local function run(src: Instance, pluginInstance: Plugin, filter: string, hooks:
 
 			total += 1
 			local startTime = os.clock()
-			local runOk, runErr = pcall(testEntry.fn)
+			local runOk, runErr = pcall(function()
+				testEntry.fn()
+				return true
+			end)
 			local duration = math.round((os.clock() - startTime) * 1000)
 
 			if runOk then
