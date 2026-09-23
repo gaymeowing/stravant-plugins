@@ -124,7 +124,7 @@ local function collectPluginSources(root: Instance): { { name: string, src: Inst
 		})
 	end
 	table.sort(pluginSources, function(a, b)
-		return a.name < b.name
+		return (a.name :: any) < (b.name :: any)
 	end)
 	return pluginSources
 end
