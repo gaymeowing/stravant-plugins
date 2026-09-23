@@ -166,17 +166,37 @@ local function writeTestProject(names: { string })
 	}) .. "\n")
 end
 
+local function installedTestPluginPath(): string
+	return `{studioPluginsDir()}/RunTests.rbxmx`
+end
+
 local function installTestPlugin()
 	local dir = studioPluginsDir()
 	if not fs.exists(dir) then
 		fs.createDirectory(dir, { makeParents = true })
 	end
-	local dest = `{dir}/RunTests.rbxmx`
+	local dest = installedTestPluginPath()
 	local copied = process.run({ "cp", BUILD_PATH, dest })
 	if not copied.ok then
 		error(`Failed to install {BUILD_PATH} → {dest}: {copied.stderr}`)
 	end
 	print(`\tInstalled → {dest}`)
+end
+
+local function uninstallTestPlugin()
+	local dest = installedTestPluginPath()
+	if fs.exists(dest) then
+		fs.remove(dest)
+		print(`\tRemoved → {dest}`)
+	end
+	if fs.exists(BUILD_PATH) then
+		fs.remove(BUILD_PATH)
+	end
+end
+
+local function finish(exitCode: number): never
+	uninstallTestPlugin()
+	process.exit(exitCode)
 end
 
 local args = process.args
@@ -354,7 +374,7 @@ end
 if not ready then
 	httpServer.close()
 	print(`Timed out waiting for Studio after {CONNECT_TIMEOUT}s.`)
-	process.exit(1)
+	finish(1)
 end
 
 local runDeadline = os.clock() + RUN_TIMEOUT
@@ -371,7 +391,7 @@ if summary == nil then
 	else
 		print("\nConnection to Studio lost before results.")
 	end
-	process.exit(1)
+	finish(1)
 end
 
 print("")
@@ -390,7 +410,7 @@ if summary.failed > 0 then
 	print(
 		`Results: {richterm.green(`{summary.passed} passed`)}, {richterm.red(`{summary.failed} failed`)}, {summary.total} total`
 	)
-	process.exit(1)
+	finish(1)
 end
 print(`Results: {richterm.green(`{summary.passed} passed`)}, {summary.total} total`)
-process.exit(0)
+finish(0)
