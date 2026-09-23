@@ -207,7 +207,8 @@ local function writeVscodeTasks(pluginList: { Plugin })
 			isDefault = true,
 		}),
 		shellTask("Build all (watch)", { "scripts/build.luau", "all", "--watch" }, "build"),
-		shellTask("Generate Rojo projects", { "scripts/build.luau", "generate" }, "build", {
+		shellTask("Generate Rojo projects", { "scripts/build.luau", "generate" }, "build"),
+		shellTask("Generate Rojo projects (watch)", { "scripts/build.luau", "generate", "--watch" }, "build", {
 			runOptions = {
 				runOn = "folderOpen",
 			},
@@ -218,9 +219,9 @@ local function writeVscodeTasks(pluginList: { Plugin })
 				clear = false,
 			},
 		}),
-		shellTask("Generate Rojo projects (watch)", { "scripts/build.luau", "generate", "--watch" }, "build"),
 		shellTask("Test all", { "run", "scripts/test", "all" }, "test"),
 	}
+
 	for _, plugin in pluginList do
 		local name = plugin.name
 		table.insert(tasks, shellTask(`Build {name}`, { "scripts/build.luau", name }, "build"))
@@ -229,6 +230,7 @@ local function writeVscodeTasks(pluginList: { Plugin })
 			table.insert(tasks, shellTask(`Test {name}`, { "run", "scripts/test", name }, "test"))
 		end
 	end
+
 	writeJson(".vscode/tasks.json", {
 		version = "2.0.0",
 		tasks = tasks,
