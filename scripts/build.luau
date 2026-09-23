@@ -51,31 +51,38 @@ local function pluginTree(
 end
 
 local plugins = {} :: { Plugin }
-for _, entry in fs.listDirectory("plugins") do
-	if entry.type ~= "dir" then
-		continue
+
+local function discoverPlugins(): { Plugin }
+	local discovered = {} :: { Plugin }
+	for _, entry in fs.listDirectory("plugins") do
+		if entry.type ~= "dir" then
+			continue
+		end
+		local name = entry.name
+		if string.sub(name, 1, 1) == "." then
+			continue
+		end
+		if string.match(name, "^[A-Z][A-Za-z0-9]*$") == nil then
+			error(`plugins/{name} must be a PascalCase directory (used as the .rbxmx name)`)
+		end
+		if not fs.exists(`plugins/{name}/src`) or fs.type(`plugins/{name}/src`) ~= "dir" then
+			error(`plugins/{name} is missing src/`)
+		end
+		if not fs.exists(`plugins/{name}/loader.server.luau`) then
+			error(`plugins/{name} is missing loader.server.luau`)
+		end
+		table.insert(discovered, {
+			name = name,
+			output = `{name}.rbxmx`,
+		})
 	end
-	local name = entry.name
-	if string.sub(name, 1, 1) == "." then
-		continue
-	end
-	if string.match(name, "^[A-Z][A-Za-z0-9]*$") == nil then
-		error(`plugins/{name} must be a PascalCase directory (used as the .rbxmx name)`)
-	end
-	if not fs.exists(`plugins/{name}/src`) or fs.type(`plugins/{name}/src`) ~= "dir" then
-		error(`plugins/{name} is missing src/`)
-	end
-	if not fs.exists(`plugins/{name}/loader.server.luau`) then
-		error(`plugins/{name} is missing loader.server.luau`)
-	end
-	table.insert(plugins, {
-		name = name,
-		output = `{name}.rbxmx`,
-	})
+	table.sort(discovered, function(a: Plugin, b: Plugin)
+		return a.name < b.name
+	end)
+	return discovered
 end
-table.sort(plugins, function(a: Plugin, b: Plugin)
-	return a.name < b.name
-end)
+
+plugins = discoverPlugins()
 
 local function findPlugin(name: string): Plugin?
 	local needle = string.lower(name)
@@ -199,6 +206,7 @@ local function writeVscodeTasks(pluginList: { Plugin })
 			kind = "build",
 			isDefault = true,
 		}),
+		shellTask("Build all (watch)", { "scripts/build.luau", "all", "--watch" }, "build"),
 		shellTask("Generate Rojo projects", { "scripts/build.luau", "generate" }, "build", {
 			runOptions = {
 				runOn = "folderOpen",
@@ -210,6 +218,7 @@ local function writeVscodeTasks(pluginList: { Plugin })
 				clear = false,
 			},
 		}),
+		shellTask("Generate Rojo projects (watch)", { "scripts/build.luau", "generate", "--watch" }, "build"),
 		shellTask("Test all", { "run", "scripts/test", "all" }, "test"),
 	}
 	for _, plugin in pluginList do
@@ -227,6 +236,7 @@ local function writeVscodeTasks(pluginList: { Plugin })
 end
 
 local function writeAllProjects()
+	plugins = discoverPlugins()
 	writeRootProject(plugins)
 	writeVscodeTasks(plugins)
 	for _, plugin in plugins do
@@ -278,24 +288,120 @@ if watch and outDir ~= nil then
 	process.exit(1)
 end
 
-if target == "generate" then
-	if watch then
-		io.write("--watch is not valid with generate\n")
-		process.exit(1)
-	end
-	writeAllProjects()
-	io.write("Wrote default.project.json and per-plugin project files.\n")
-	process.exit(0)
-end
-
 local function ignoredWatchPath(filename: string): boolean
 	return string.match(filename, "%.project%.json$") ~= nil
 		or string.match(filename, "%.rbxmx$") ~= nil
 		or string.match(filename, "sourcemap%.json$") ~= nil
+		or string.match(filename, "tasks%.json$") ~= nil
 end
 
-local function rojoBuild(plugin: Plugin): boolean
-	writeRootProject(plugins)
+local function pluginNameFromWatchPath(filename: string): string?
+	return string.match(filename, "[/\\]plugins[/\\]([^/\\]+)") or string.match(filename, "^plugins[/\\]([^/\\]+)")
+end
+
+local function isSharedWatchPath(filename: string): boolean
+	return string.find(filename, "[/\\]libraries[/\\]", 1) ~= nil
+		or string.find(filename, "^libraries[/\\]", 1) ~= nil
+		or string.find(filename, "[/\\]Packages[/\\]", 1) ~= nil
+		or string.find(filename, "^Packages[/\\]", 1) ~= nil
+		or filename == "libraries"
+		or filename == "Packages"
+		or filename == "plugins"
+end
+
+local function watchPaths(label: string, onDirty: (dirtyPlugins: { [string]: boolean }, sharedDirty: boolean) -> ())
+	local dirtyPlugins: { [string]: boolean } = {}
+	local sharedDirty = false
+
+	local function mark(filename: string)
+		if ignoredWatchPath(filename) then
+			return
+		end
+		if isSharedWatchPath(filename) then
+			sharedDirty = true
+			return
+		end
+		local name = pluginNameFromWatchPath(filename)
+		if name ~= nil then
+			dirtyPlugins[name] = true
+		else
+			sharedDirty = true
+		end
+	end
+
+	lutefs.watch("plugins", mark)
+	lutefs.watch("libraries", mark)
+	if fs.exists("Packages") then
+		lutefs.watch("Packages", mark)
+	end
+
+	io.write(`{label}\n`)
+	while true do
+		task.wait(0.2)
+		if sharedDirty or next(dirtyPlugins) ~= nil then
+			local batchPlugins = dirtyPlugins
+			local batchShared = sharedDirty
+			dirtyPlugins = {}
+			sharedDirty = false
+			onDirty(batchPlugins, batchShared)
+		end
+	end
+end
+
+if target == "generate" then
+	if outDir ~= nil then
+		io.write("--out is not valid with generate\n")
+		process.exit(1)
+	end
+	writeAllProjects()
+	io.write("Wrote default.project.json and per-plugin project files.\n")
+	if not watch then
+		process.exit(0)
+	end
+	watchPaths("Watching for changes (regenerating Rojo projects)...", function(dirtyPluginNames, sharedDirty)
+		local ok, err = pcall(function()
+			if sharedDirty then
+				writeAllProjects()
+				return
+			end
+
+			local previous = plugins
+			plugins = discoverPlugins()
+			if #plugins ~= #previous then
+				writeAllProjects()
+				return
+			end
+			for index, plugin in plugins do
+				if previous[index].name ~= plugin.name then
+					writeAllProjects()
+					return
+				end
+			end
+
+			local any = false
+			for name in dirtyPluginNames do
+				local plugin = findPlugin(name)
+				if plugin ~= nil then
+					writePluginProjects(plugin)
+					any = true
+				end
+			end
+			if any then
+				writeRootProject(plugins)
+			end
+		end)
+		if not ok then
+			io.write(`Generate failed: {tostring(err)}\n`)
+			return
+		end
+		io.write("  Regenerated.\n")
+	end)
+end
+
+local function rojoBuild(plugin: Plugin, writeRoot: boolean?): boolean
+	if writeRoot ~= false then
+		writeRootProject(plugins)
+	end
 	writePluginProjects(plugin)
 	local projectPath = `plugins/{plugin.name}/default.project.json`
 
@@ -331,43 +437,66 @@ local function rojoBuild(plugin: Plugin): boolean
 	return true
 end
 
-local function watchPlugin(plugin: Plugin)
-	if not rojoBuild(plugin) then
-		process.exit(1)
+local function pluginsToRebuild(
+	watched: { Plugin },
+	dirtyPluginNames: { [string]: boolean },
+	sharedDirty: boolean
+): { Plugin }
+	if sharedDirty then
+		return watched
 	end
 
-	local dirty = false
-	local function mark(filename: string)
-		if ignoredWatchPath(filename) then
+	local watchedByName: { [string]: Plugin } = {}
+	for _, plugin in watched do
+		watchedByName[plugin.name] = plugin
+	end
+
+	local rebuild = {}
+	for name in dirtyPluginNames do
+		local plugin = watchedByName[name]
+		if plugin ~= nil then
+			table.insert(rebuild, plugin)
+		end
+	end
+	table.sort(rebuild, function(a: Plugin, b: Plugin)
+		return a.name < b.name
+	end)
+	return rebuild
+end
+
+local function watchPlugins(watched: { Plugin })
+	for _, plugin in watched do
+		if not rojoBuild(plugin, true) then
+			process.exit(1)
+		end
+	end
+
+	local label = if #watched == 1
+		then `Watching for changes ({watched[1].name} build).`
+		else "Watching for changes (rebuilding dirty plugins)."
+
+	watchPaths(label, function(dirtyPluginNames, sharedDirty)
+		local rebuild = pluginsToRebuild(watched, dirtyPluginNames, sharedDirty)
+		if #rebuild == 0 then
 			return
 		end
-		dirty = true
-	end
-
-	lutefs.watch("plugins", mark)
-	lutefs.watch("libraries", mark)
-	if fs.exists("Packages") then
-		lutefs.watch("Packages", mark)
-	end
-
-	io.write("Watching for changes (root default.project.json + plugin build).\n")
-	while true do
-		task.wait(0.2)
-		if dirty then
-			dirty = false
-			rojoBuild(plugin)
+		writeRootProject(plugins)
+		for _, plugin in rebuild do
+			if not rojoBuild(plugin, false) then
+				io.write(`Build failed; still watching.\n`)
+				return
+			end
 		end
-	end
+	end)
 end
 
 if target == "all" then
 	if watch then
-		io.write("--watch requires a single plugin name\n")
-		process.exit(1)
+		watchPlugins(plugins)
 	end
 	writeRootProject(plugins)
 	for _, plugin in plugins do
-		if not rojoBuild(plugin) then
+		if not rojoBuild(plugin, false) then
 			process.exit(1)
 		end
 	end
@@ -382,7 +511,7 @@ if plugin == nil then
 end
 
 if watch then
-	watchPlugin(plugin :: Plugin)
-elseif not rojoBuild(plugin :: Plugin) then
+	watchPlugins({ plugin :: Plugin })
+elseif not rojoBuild(plugin :: Plugin, true) then
 	process.exit(1)
 end
