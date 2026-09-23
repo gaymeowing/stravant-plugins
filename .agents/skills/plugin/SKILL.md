@@ -40,7 +40,7 @@ Plugins are PascalCase dirs under `plugins/`. Generation writes gitignored:
 - `plugins/<Name>/test.project.json` — per-plugin test harness (when specs exist)
 - `scripts/test/test.project.json` — combined multi-plugin RunTests project (written by the test script)
 
-Opening the folder in VS Code/Cursor runs **Generate Rojo projects** once (`runOn: folderOpen`). Use **Generate Rojo projects (watch)** or `generate --watch` if you're adding/removing plugins. Elsewhere, run `generate` when those files are missing.
+Opening the folder in VS Code or a VS Code based editor causes `lute scripts/build.luau generate --watch` to run automatically whilst the editor is open. Elsewhere, run `generate` or `generate --watch` when those files are missing.
 
 Enable **Reload Plugins on File Changed** in Studio so rebuilt `.rbxmx` reloads.
 
