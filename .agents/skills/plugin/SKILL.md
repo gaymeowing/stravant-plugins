@@ -48,7 +48,7 @@ lute run scripts/test RopeTool ResizeAlign redupe
 lute run scripts/test all
 ```
 
-Builds `RunTests.rbxmx` and waits for Studio over a local websocket. Load that plugin in Studio (Reload Plugins on File Changed works), then open any place. Plugin names are case-insensitive.
+Builds `RunTests.rbxmx` once, installs it to the Studio Plugins folder, and waits over a local websocket. Open any place in Studio (Reload Plugins on File Changed works). Plugin names are case-insensitive; omit args or pass `all` to test every plugin with specs.
 
 Specs are `*.spec.luau` under each plugin `src/`. They can call `t.screenshot("name")`. UI tests: mount into `ScreenGui` under `CoreGui`, flush with `ReactRoblox.act`.
 
