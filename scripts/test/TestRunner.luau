@@ -15,7 +15,7 @@ export type TestContext = {
 
 export type RunHooks = {
 	screenshot: ((name: string?) -> ())?,
-	onOutput: ((message: string) -> ())?,
+	onSection: ((kind: "plugin" | "suite", name: string) -> ())?,
 	onResult: ((result: {
 		name: string,
 		status: "pass" | "fail",
@@ -24,10 +24,18 @@ export type RunHooks = {
 	}) -> ())?,
 }
 
+export type PluginSummary = {
+	name: string,
+	passed: number,
+	failed: number,
+	total: number,
+}
+
 export type RunSummary = {
 	passed: number,
 	failed: number,
 	total: number,
+	plugins: { PluginSummary },
 }
 
 local function deepEqual(a: any, b: any): boolean
@@ -75,16 +83,106 @@ local function createExpect(value: any): ExpectResult
 	}
 end
 
+local LogService = game:GetService("LogService")
+
+local function scrubTrace(trace: string): string
+	local kept = {}
+	for _, line in string.split(trace, "\n") do
+		if string.find(line, "TestRunner", 1, true) or string.find(line, "RunTests.Loader", 1, true) then
+			continue
+		end
+		table.insert(kept, line)
+	end
+	return table.concat(kept, "\n")
+end
+
+local function callWithTrace(fn: () -> ...any): (boolean, ...any)
+	local logged: { string } = {}
+	local connection = LogService.MessageOut:Connect(function(text, messageType)
+		if messageType == Enum.MessageType.MessageError then
+			table.insert(logged, text)
+		end
+	end)
+
+	local pack = table.pack(xpcall(fn, function(err)
+		local errText = tostring(err)
+		local message = if #logged == 0 then
+			debug.traceback(errText, 2)
+		elseif string.find(table.concat(logged, "\n"), errText, 1, true) then
+			table.concat(logged, "\n")
+		else
+			table.concat(logged, "\n") .. "\n" .. debug.traceback(errText, 2)
+		end
+		return scrubTrace(message)
+	end))
+	connection:Disconnect()
+
+	if pack[1] then
+		return true, table.unpack(pack, 2, pack.n)
+	end
+	return false, tostring(pack[2])
+end
+
+local function resolvePluginAndModule(src: Instance, testModule: ModuleScript): (string, string)
+	local parts = {}
+	local current: Instance? = testModule
+	while current ~= nil and current ~= src do
+		table.insert(parts, 1, current.Name)
+		current = current.Parent
+	end
+
+	local fileName = parts[#parts] or testModule.Name
+	local moduleName = if string.sub(fileName, -5) == ".spec" then string.sub(fileName, 1, -6) else fileName
+	local pluginName = if #parts >= 2 then parts[1] else "Tests"
+	return pluginName, moduleName
+end
+
 local function run(src: Instance, pluginInstance: Plugin, filter: string, hooks: RunHooks?): RunSummary
 	local screenshot = if hooks then hooks.screenshot else nil
-	local onOutput = if hooks then hooks.onOutput else nil
+	local onSection = if hooks then hooks.onSection else nil
 	local onResult = if hooks then hooks.onResult else nil
 
 	local passed = 0
 	local failed = 0
 	local total = 0
+	local currentPlugin: string? = nil
+	local pluginOrder: { string } = {}
+	local pluginStats: { [string]: { passed: number, failed: number, total: number } } = {}
 
-	local function emitResult(name: string, status: "pass" | "fail", duration: number, err: string?)
+	local function emitPlugin(pluginName: string)
+		if pluginName == currentPlugin then
+			return
+		end
+		currentPlugin = pluginName
+		if onSection then
+			onSection("plugin", pluginName)
+		end
+	end
+
+	local function emitSuite(suiteName: string)
+		if onSection then
+			onSection("suite", suiteName)
+		end
+	end
+
+	local function record(pluginName: string, name: string, status: "pass" | "fail", duration: number, err: string?)
+		local stats = pluginStats[pluginName]
+		if not stats then
+			stats = { passed = 0, failed = 0, total = 0 }
+			pluginStats[pluginName] = stats
+			table.insert(pluginOrder, pluginName)
+		end
+
+		stats.total += 1
+		total += 1
+		if status == "pass" then
+			stats.passed += 1
+			passed += 1
+		else
+			stats.failed += 1
+			failed += 1
+		end
+
 		if onResult then
 			onResult({
 				name = name,
@@ -96,26 +194,30 @@ local function run(src: Instance, pluginInstance: Plugin, filter: string, hooks:
 	end
 
 	local testModules = src:QueryDescendants("ModuleScript")
+	table.sort(testModules, function(a, b)
+		return a:GetFullName() < b:GetFullName()
+	end)
+
 	for _, testModule in testModules do
-		local moduleName = testModule.Name
-		if string.sub(moduleName, -5) == ".spec" then
-			moduleName = string.sub(moduleName, 1, -6)
-		else
+		local pluginName, moduleName = resolvePluginAndModule(src, testModule)
+		if pluginName == "PluginGui" or string.sub(testModule.Name, -5) ~= ".spec" then
 			continue
 		end
 
-		local ok, testFn = pcall(require, testModule)
+		local ok, testFn = callWithTrace(function()
+			return require(testModule)
+		end)
 		if not ok then
-			failed += 1
-			total += 1
-			emitResult(moduleName .. " (load)", "fail", 0, tostring(testFn))
+			emitPlugin(pluginName)
+			emitSuite(moduleName)
+			record(pluginName, "(load)", "fail", 0, tostring(testFn))
 			continue
 		end
 
 		if type(testFn) ~= "function" then
-			failed += 1
-			total += 1
-			emitResult(moduleName .. " (load)", "fail", 0, "Test module did not return a function")
+			emitPlugin(pluginName)
+			emitSuite(moduleName)
+			record(pluginName, "(load)", "fail", 0, "Test module did not return a function")
 			continue
 		end
 
@@ -136,49 +238,65 @@ local function run(src: Instance, pluginInstance: Plugin, filter: string, hooks:
 			plugin = pluginInstance,
 		}
 
-		local registerOk, registerErr = pcall(testFn, t)
+		local registerOk, registerErr = callWithTrace(function()
+			testFn(t)
+			return true
+		end)
 		if not registerOk then
-			failed += 1
-			total += 1
-			emitResult(moduleName .. " (register)", "fail", 0, tostring(registerErr))
+			emitPlugin(pluginName)
+			emitSuite(moduleName)
+			record(pluginName, "(register)", "fail", 0, tostring(registerErr))
 			continue
 		end
 
+		local matched: { { name: string, fn: () -> () } } = {}
 		for _, testEntry in tests do
 			local fullName = moduleName .. " > " .. testEntry.name
-			if filter ~= "all" and not string.find(fullName, filter, 1, true) then
-				continue
+			if filter == "all" or string.find(fullName, filter, 1, true) then
+				table.insert(matched, testEntry)
 			end
+		end
+		if #matched == 0 then
+			continue
+		end
 
-			total += 1
+		emitPlugin(pluginName)
+		emitSuite(moduleName)
+
+		for _, testEntry in matched do
 			local startTime = os.clock()
-			local runOk, runErr = pcall(function()
+			local runOk, runErr = callWithTrace(function()
 				testEntry.fn()
 				return true
 			end)
 			local duration = math.round((os.clock() - startTime) * 1000)
 
 			if runOk then
-				passed += 1
-				emitResult(fullName, "pass", duration, nil)
+				record(pluginName, testEntry.name, "pass", duration, nil)
 			else
-				failed += 1
-				emitResult(fullName, "fail", duration, tostring(runErr))
+				record(pluginName, testEntry.name, "fail", duration, tostring(runErr))
 			end
 		end
 	end
 
-	if onOutput then
-		onOutput(`Finished: {passed} passed, {failed} failed, {total} total`)
+	local plugins: { PluginSummary } = {}
+	for _, name in pluginOrder do
+		local stats = pluginStats[name]
+		table.insert(plugins, {
+			name = name,
+			passed = stats.passed,
+			failed = stats.failed,
+			total = stats.total,
+		})
 	end
 
 	return {
 		passed = passed,
 		failed = failed,
 		total = total,
+		plugins = plugins,
 	}
 end
-
 return {
 	run = run,
 	createExpect = createExpect,

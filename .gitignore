@@ -1,5 +1,4 @@
-plugins/*/test.project.json
-plugins/*/default.project.json
+test.project.json
 last_screenshot_*.png
 default.project.json
 sourcemap.json

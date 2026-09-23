@@ -48,8 +48,8 @@ local function runTests(filter: string)
 
 	local summary = TestRunner.run(src, plugin, filter, {
 		screenshot = takeScreenshot,
-		onOutput = function(message: string)
-			sendJson({ type = "output", message = message })
+		onSection = function(kind: "plugin" | "suite", name: string)
+			sendJson({ type = "section", kind = kind, name = name })
 		end,
 		onResult = function(result: {
 			name: string,
@@ -71,6 +71,7 @@ local function runTests(filter: string)
 		passed = summary.passed,
 		failed = summary.failed,
 		total = summary.total,
+		plugins = summary.plugins,
 	})
 end
 
@@ -83,7 +84,6 @@ websocket.MessageReceived:Connect(function(message: string)
 
 	if data.type == "run" then
 		local filter = data.filter or "all"
-		sendJson({ type = "output", message = "Running tests with filter: " .. filter })
 
 		-- pcall of a void function is typed as returning only boolean; return a value so we get the error too.
 		local runOk, runErr = pcall(function()
@@ -100,6 +100,7 @@ websocket.MessageReceived:Connect(function(message: string)
 				passed = 0,
 				failed = 1,
 				total = 1,
+				plugins = {},
 			})
 		end
 	end

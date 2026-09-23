@@ -9,10 +9,16 @@ local PORT = 38741
 local CONNECT_TIMEOUT = 30
 local RUN_TIMEOUT = 120
 
+local PROJECT_PATH = "test.project.json"
+local BUILD_PATH = "RunTests.rbxmx"
+
 local pluginNames = {}
 for _, entry in fs.listDirectory("plugins") do
-	table.insert(pluginNames, entry.name)
+	if entry.type == "dir" and string.match(entry.name, "^[A-Z][A-Za-z0-9]*$") then
+		table.insert(pluginNames, entry.name)
+	end
 end
+table.sort(pluginNames)
 
 local function findPluginName(name: string): string?
 	local needle = string.lower(name)
@@ -45,34 +51,65 @@ local function hasTests(pluginName: string): boolean
 	return hasSpecIn(src)
 end
 
-local function writeTestProject(pluginName: string)
-	fs.writeStringToFile(`plugins/{pluginName}/test.project.json`, json.serialize({
-		name = `{pluginName}-runtests`,
-		globIgnorePaths = {
-			"**/place.project.json",
-			"**/benchmarks.project.json",
-		},
-		tree = {
-			["$className"] = "Folder",
-			Src = {
-				["$path"] = "src",
-				PluginGui = {
-					["$path"] = "../../libraries/PluginGui",
+local function studioPluginsDir(): string
+	local localAppData = process.env.LOCALAPPDATA
+	if localAppData ~= nil and localAppData ~= "" then
+		return `{localAppData}/Roblox/Plugins`
+	end
+	return `{process.homedir()}/Documents/Roblox/Plugins`
+end
+
+local function writeTestProject(names: { string })
+	local src: { [string]: any } = {
+		["$className"] = "Folder",
+	}
+	for _, name in names do
+		src[name] = {
+			["$path"] = `../../plugins/{name}/src`,
+			PluginGui = {
+				["$path"] = "../../libraries/PluginGui",
+			},
+		}
+	end
+
+	fs.writeStringToFile(
+		PROJECT_PATH,
+		json.serialize({
+			name = "RunTests",
+			globIgnorePaths = {
+				"**/place.project.json",
+				"**/benchmarks.project.json",
+			},
+			tree = {
+				["$className"] = "Folder",
+				Src = src,
+				Packages = {
+					["$path"] = {
+						optional = "../../Packages",
+					},
+				},
+				Loader = {
+					["$path"] = "runtests.server.luau",
+				},
+				TestRunner = {
+					["$path"] = "TestRunner.luau",
 				},
 			},
-			Packages = {
-				["$path"] = {
-					optional = "../../Packages",
-				},
-			},
-			Loader = {
-				["$path"] = "../../scripts/test/runtests.server.luau",
-			},
-			TestRunner = {
-				["$path"] = "../../scripts/test/TestRunner.luau",
-			},
-		},
-	}) .. "\n")
+		}) .. "\n"
+	)
+end
+
+local function installTestPlugin()
+	local dir = studioPluginsDir()
+	if not fs.exists(dir) then
+		fs.createDirectory(dir, { makeParents = true })
+	end
+	local dest = `{dir}/RunTests.rbxmx`
+	local copied = process.run({ "cp", BUILD_PATH, dest })
+	if not copied.ok then
+		error(`Failed to install {BUILD_PATH} → {dest}: {copied.stderr}`)
+	end
+	print(`\tInstalled → {dest}`)
 end
 
 local args = process.args
@@ -80,173 +117,213 @@ local selected: { string } = {}
 local seen: { [string]: boolean } = {}
 
 local secondArg = args[2]
-
 if (secondArg and string.lower(secondArg) == "all") or not secondArg then
 	selected = pluginNames
 else
 	for index = 2, #args do
 		local arg = args[index]
 		local pluginName = findPluginName(arg)
-
 		if not pluginName then
 			print(`Unknown plugin: {arg}`)
 			process.exit(1)
-		else
-			if not seen[pluginName] then
-				seen[pluginName] = true
-				table.insert(selected, pluginName)
-			end
+		elseif not seen[pluginName] then
+			seen[pluginName] = true
+			table.insert(selected, pluginName)
 		end
 	end
+end
+
+local toTest = {}
+for _, pluginName in selected do
+	if hasTests(pluginName) then
+		table.insert(toTest, pluginName)
+	end
+end
+
+if #toTest == 0 then
+	print("No plugins with tests to run.")
+	process.exit(0)
 end
 
 local filter = "all"
 
-local function runStudio(pluginName: string): boolean
-	writeTestProject(pluginName)
-	local projectPath = `plugins/{pluginName}/test.project.json`
+local ready = false
+local doneSummary: {
+	passed: number,
+	failed: number,
+	total: number,
+	plugins: {
+		{
+			name: string,
+			passed: number,
+			failed: number,
+			total: number,
+		}
+	},
+}? =
+	nil
+local studioWebsocket: server.ServerWebSocket? = nil
+local closed = false
 
-	local ready = false
-	local doneSummary: { passed: number, failed: number, total: number }? = nil
-	local studioWebsocket: server.ServerWebSocket? = nil
-	local closed = false
-
-	local httpServer = server.serve({
-		hostname = "127.0.0.1",
-		port = PORT,
-		handler = function(request, netServer)
-			if netServer:upgrade(request) then
-				return nil
-			end
-			return {
-				status = 404,
-				body = "expected websocket",
-			}
+local httpServer = server.serve({
+	hostname = "127.0.0.1",
+	port = PORT,
+	handler = function(request, netServer)
+		if netServer:upgrade(request) then
+			return nil
+		end
+		return {
+			status = 404,
+			body = "expected websocket",
+		}
+	end,
+	websocket = {
+		open = function(websocket)
+			studioWebsocket = websocket
 		end,
-		websocket = {
-			open = function(websocket)
-				studioWebsocket = websocket
-			end,
-			message = function(websocket, rawMessage)
-				local text = if type(rawMessage) == "buffer" then buffer.tostring(rawMessage) else rawMessage :: string
-				local data = json.deserialize(text)
-				if type(data) ~= "table" then
-					print(`Bad message from Studio: {text}`)
-					return
-				end
-				local message = data :: { [string]: any }
-				local messageType = message.type
+		message = function(websocket, rawMessage)
+			local text = if type(rawMessage) == "buffer" then buffer.tostring(rawMessage) else rawMessage :: string
+			local data = json.deserialize(text)
+			if type(data) ~= "table" then
+				print(`Bad message from Studio: {text}`)
+				return
+			end
+			local message = data :: { [string]: any }
+			local messageType = message.type
 
-				if messageType == "ready" then
-					ready = true
-					websocket:send(json.serialize({
-						type = "run",
-						filter = filter,
-					}))
-				elseif messageType == "output" then
-					print(`\t{message.message}`)
-				elseif messageType == "result" then
-					local name = message.name or "?"
-					local status = message.status or "?"
-					local duration = tonumber(message.duration) or 0
-					if status == "pass" then
-						print(`\t{richterm.green("PASS")}\t{name} ({duration}ms)`)
-					else
-						print(`\t{richterm.red("FAIL")}\t{name}`)
-						if message.error then
-							print(`\t\t{message.error}`)
+			if messageType == "ready" then
+				if not ready then
+					print("Connected!\n\nRunning tests...")
+				end
+				ready = true
+				websocket:send(json.serialize({
+					type = "run",
+					filter = filter,
+				}))
+			elseif messageType == "section" then
+				local name = tostring(message.name or "?")
+				if message.kind == "suite" then
+					print(`\t{richterm.cyan(name)}`)
+				else
+					print(`\n{richterm.bold(name)}`)
+				end
+			elseif messageType == "output" then
+				print(tostring(message.message))
+			elseif messageType == "result" then
+				local name = message.name or "?"
+				local status = message.status or "?"
+				local duration = tonumber(message.duration) or 0
+				local timeText = richterm.dim(`({duration}ms)`)
+				if status == "pass" then
+					print(`\t\t{richterm.combine(richterm.bold, richterm.green)("PASS")} {name} {timeText}`)
+				else
+					print(`\t\t{richterm.combine(richterm.bold, richterm.red)("FAIL")} {name} {timeText}`)
+					if message.error then
+						for _, line in string.split(tostring(message.error), "\n") do
+							if line ~= "" then
+								print(`\t\t{richterm.italic(line)}`)
+							end
 						end
 					end
-				elseif messageType == "screenshot" then
-					local name = message.name or "screenshot"
-					if message.success then
-						print(`\t{richterm.cyan("SCREENSHOT")}\t{name}`)
-					else
-						print(`\t{richterm.yellow("SCREENSHOT")}\t{name} (failed)`)
-					end
-				elseif messageType == "done" then
-					doneSummary = {
-						passed = tonumber(message.passed) or 0,
-						failed = tonumber(message.failed) or 0,
-						total = tonumber(message.total) or 0,
-					}
 				end
-			end,
-			close = function(_websocket, _code, _message)
-				closed = true
-			end,
-		},
-	})
+			elseif messageType == "screenshot" then
+				local name = message.name or "screenshot"
+				if message.success then
+					print(`\t\t{richterm.cyan("SCREENSHOT")}\t{name}`)
+				else
+					print(`\t\t{richterm.yellow("SCREENSHOT")}\t{name} {richterm.dim("(failed)")}`)
+				end
+			elseif messageType == "done" then
+				local plugins = {}
+				if type(message.plugins) == "table" then
+					for _, entry in message.plugins :: { any } do
+						if type(entry) == "table" then
+							table.insert(plugins, {
+								name = tostring(entry.name or "?"),
+								passed = tonumber(entry.passed) or 0,
+								failed = tonumber(entry.failed) or 0,
+								total = tonumber(entry.total) or 0,
+							})
+						end
+					end
+				end
+				doneSummary = {
+					passed = tonumber(message.passed) or 0,
+					failed = tonumber(message.failed) or 0,
+					total = tonumber(message.total) or 0,
+					plugins = plugins,
+				}
+			end
+		end,
+		close = function(_websocket, _code, _message)
+			closed = true
+		end,
+	},
+})
 
-	print("Building test runner...")
-	local build = process.run({ "rojo", "build", projectPath, "-o", "RunTests.rbxmx" })
-	if not build.ok then
-		if build.stderr ~= "" then
-			print(build.stderr)
-		end
-		httpServer.close()
-		print(`Failed to build {projectPath}`)
-		return false
+print(`Building test runner for: {table.concat(toTest, ", ")}`)
+writeTestProject(toTest)
+local build = process.run({ "rojo", "build", PROJECT_PATH, "-o", BUILD_PATH })
+if not build.ok then
+	if build.stderr ~= "" then
+		print(build.stderr)
 	end
-	print("\tDone. Load RunTests.rbxmx in Studio, then open any place.")
-	print(`Waiting for Studio on port {PORT}...`)
-
-	local connectDeadline = os.clock() + CONNECT_TIMEOUT
-	while not ready and os.clock() < connectDeadline do
-		task.wait(0.25)
-		if closed and studioWebsocket == nil then
-			break
-		end
-	end
-
-	if not ready then
-		httpServer.close()
-		print(`Timed out waiting for Studio after {CONNECT_TIMEOUT}s.`)
-		return false
-	end
-
-	print("Connected!\n\nRunning tests...")
-	local runDeadline = os.clock() + RUN_TIMEOUT
-	while doneSummary == nil and not closed and os.clock() < runDeadline do
-		task.wait(0.25)
-	end
-
 	httpServer.close()
+	print(`Failed to build {PROJECT_PATH}`)
+	process.exit(1)
+end
+installTestPlugin()
+print("\tDone. Open any place in Studio (enable Reload Plugins on File Changed if needed).")
+print(`Waiting for Studio on port {PORT}...`)
 
-	local summary = doneSummary
-	if summary == nil then
-		if not closed and os.clock() >= runDeadline then
-			print(`\nTimed out waiting for test results after {RUN_TIMEOUT}s.`)
-		else
-			print("\nConnection to Studio lost before results.")
-		end
-		return false
+local connectDeadline = os.clock() + CONNECT_TIMEOUT
+while not ready and os.clock() < connectDeadline do
+	task.wait(0.25)
+	if closed and studioWebsocket == nil then
+		break
 	end
+end
 
-	print("")
-	if summary.failed > 0 then
+if not ready then
+	httpServer.close()
+	print(`Timed out waiting for Studio after {CONNECT_TIMEOUT}s.`)
+	process.exit(1)
+end
+
+local runDeadline = os.clock() + RUN_TIMEOUT
+while doneSummary == nil and not closed and os.clock() < runDeadline do
+	task.wait(0.25)
+end
+
+httpServer.close()
+
+local summary = doneSummary
+if summary == nil then
+	if not closed and os.clock() >= runDeadline then
+		print(`\nTimed out waiting for test results after {RUN_TIMEOUT}s.`)
+	else
+		print("\nConnection to Studio lost before results.")
+	end
+	process.exit(1)
+end
+
+print("")
+for _, plugin in summary.plugins do
+	local passedText = richterm.green(`{plugin.passed} passed`)
+	if plugin.failed > 0 then
 		print(
-			`Results: {richterm.green(`{summary.passed} passed`)}, {richterm.red(`{summary.failed} failed`)}, {summary.total} total`
+			`{richterm.bold(plugin.name)}: {passedText}, {richterm.red(`{plugin.failed} failed`)}, {plugin.total} total`
 		)
-		return false
-	end
-	print(`Results: {richterm.green(`{summary.passed} passed`)}, {summary.total} total`)
-	return true
-end
-
-local function runOne(pluginName: string): boolean
-	if not hasTests(pluginName) then
-		print(`Skipping {pluginName} (no *.spec.luau).`)
-		return true
-	end
-	return runStudio(pluginName)
-end
-
-local ok = true
-for _, pluginName in selected do
-	if not runOne(pluginName) then
-		ok = false
+	else
+		print(`{richterm.bold(plugin.name)}: {passedText}, {plugin.total} total`)
 	end
 end
 
-process.exit(if ok then 0 else 1)
+if summary.failed > 0 then
+	print(
+		`Results: {richterm.green(`{summary.passed} passed`)}, {richterm.red(`{summary.failed} failed`)}, {summary.total} total`
+	)
+	process.exit(1)
+end
+print(`Results: {richterm.green(`{summary.passed} passed`)}, {summary.total} total`)
+process.exit(0)
