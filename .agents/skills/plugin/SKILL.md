@@ -21,48 +21,53 @@ Luau LSP already maintains `sourcemap.json` — don't run `rojo sourcemap` yours
 
 ## Build
 
-Do **not** use `rojo build -o`. Use the lute wrapper (rojo `-p` under the hood):
+Do **not** call `rojo build -o` directly. Use the lute wrapper (`rojo build -p` under the hood for Studio Plugins installs):
 
 ```bash
-lute scripts/build.luau generate          # write gitignored Rojo projects only
-lute scripts/build.luau <PluginName>      # e.g. ResizeAlign
-lute scripts/build.luau all
-lute scripts/build.luau <PluginName> --watch
-lute scripts/build.luau all --out build
+lute scripts/build.luau generate              # write gitignored Rojo project files
+lute scripts/build.luau generate --watch      # regenerate only projects touched by each change
+lute scripts/build.luau <PluginName>          # e.g. ResizeAlign → ResizeAlign.rbxmx
+lute scripts/build.luau <PluginName> --watch  # rebuild that plugin when it (or shared libs) change
+lute scripts/build.luau all                   # build every plugin once
+lute scripts/build.luau all --watch           # rebuild only dirty plugins per change
+lute scripts/build.luau all --out build       # write rbxmx files into a directory (CI/release)
 ```
 
-Plugins are PascalCase dirs under `plugins/`. Build writes gitignored:
+Plugins are PascalCase dirs under `plugins/`. Generation writes gitignored:
 
-- root `default.project.json` — all plugins (Folder layout for typecheck)
+- `default.project.json` — all plugins (Folder tree for Luau LSP / typecheck)
 - `plugins/<Name>/default.project.json` — single-plugin `.rbxmx` build
+- `plugins/<Name>/test.project.json` — per-plugin test harness (when specs exist)
+- `scripts/test/test.project.json` — combined multi-plugin RunTests project (written by the test script)
 
-When this repo is opened in a VS Code–based editor, `.vscode/tasks.json` auto-runs `lute scripts/build.luau generate`. Elsewhere, run that command when those project files are missing.
+Opening the folder in VS Code/Cursor runs **Generate Rojo projects** once (`runOn: folderOpen`). Use **Generate Rojo projects (watch)** or `generate --watch` if you're adding/removing plugins. Elsewhere, run `generate` when those files are missing.
 
 Enable **Reload Plugins on File Changed** in Studio so rebuilt `.rbxmx` reloads.
 
 ## Test
 
 ```bash
+lute run scripts/test                 # every plugin that has specs
+lute run scripts/test all             # same
 lute run scripts/test RoadHelper
 lute run scripts/test RopeTool ResizeAlign redupe
-lute run scripts/test all
 ```
 
-Builds `RunTests.rbxmx` once, installs it to the Studio Plugins folder, and waits over a local websocket. Open any place in Studio (Reload Plugins on File Changed works). Plugin names are case-insensitive; omit args or pass `all` to test every plugin with specs.
+Builds `RunTests.rbxmx` once, installs it into the Studio Plugins folder, then waits on a local websocket. Open any place in Studio (Reload Plugins on File Changed works). Names are case-insensitive.
 
-Specs are `*.spec.luau` under each plugin `src/`. They can call `t.screenshot("name")`. UI tests: mount into `ScreenGui` under `CoreGui`, flush with `ReactRoblox.act`.
+Specs are `*.spec.luau` under each plugin `src/`. Output is grouped by plugin → suite → case. Specs can call `t.screenshot("name")`. For UI: mount into a `ScreenGui` under `CoreGui`, flush with `ReactRoblox.act`.
 
 ## Layout
 
 | Path | Role |
 | --- | --- |
 | `plugins/<Name>/` | Plugin sources + `loader.server.luau` |
-| `libraries/PluginGui/` | Shared UI widgets; mapped as `Src.PluginGui` in each plugin project |
+| `libraries/PluginGui/` | Shared UI widgets (`Src.PluginGui` in each plugin project) |
 | `Packages/` | Root Wally installs (gitignored) |
 | `foreman.toml` | Toolchain pins |
-| `wally.toml` | Shared dependencies for every plugin |
+| `wally.toml` | Shared deps for every plugin |
 
-Per-plugin architecture lives in `.agents/skills/<plugin>/` (e.g. `resizealign`, `gapfill`). Prefer those for plugin-specific behavior; use this skill for build/test/deps.
+Per-plugin architecture is in `.agents/skills/<plugin>/` (e.g. `resizealign`, `gapfill`). Prefer those for behavior; use this skill for build/test/deps.
 
 ## Shared conventions
 
