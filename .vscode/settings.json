@@ -3,5 +3,4 @@
 	"luau-lsp.sourcemap.rojoProjectFile": "default.project.json",
 	"luau-lsp.sourcemap.autogenerate": true,
 	"luau-lsp.types.robloxSecurityLevel": "PluginSecurity",
-	"task.allowAutomaticTasks": "on"
 }
