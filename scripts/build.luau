@@ -14,6 +14,81 @@ local function writeJson(path: string, value: any)
 	fs.writeStringToFile(path, json.serialize(value) .. "\n")
 end
 
+-- Map Packages for Rojo so Wally package dirs that use src/ become ModuleScripts
+-- (require(Packages.React) → _Index/.../react must be a ModuleScript, not a Folder).
+-- projectRelativePath is the $path prefix relative to the Rojo project file.
+local function packagesTree(projectRelativePath: string): { [string]: any }
+	local fsPath = "Packages"
+	if not fs.exists(fsPath) then
+		return {
+			["$path"] = {
+				optional = projectRelativePath,
+			},
+		}
+	end
+
+	local tree: { [string]: any } = {
+		["$className"] = "Folder",
+	}
+
+	for _, entry in fs.listDirectory(fsPath) do
+		local name = entry.name
+		if string.sub(name, 1, 1) == "." then
+			continue
+		end
+
+		if name == "_Index" and entry.type == "dir" then
+			local indexTree: { [string]: any } = {
+				["$className"] = "Folder",
+			}
+			for _, scopeEntry in fs.listDirectory(`{fsPath}/_Index`) do
+				if scopeEntry.type ~= "dir" then
+					continue
+				end
+				local scopePath = `{fsPath}/_Index/{scopeEntry.name}`
+				local scopeTree: { [string]: any } = {
+					["$className"] = "Folder",
+				}
+				for _, packageEntry in fs.listDirectory(scopePath) do
+					local packageName = packageEntry.name
+					local packagePath = `{scopePath}/{packageName}`
+					local projectPackagePath = `{projectRelativePath}/_Index/{scopeEntry.name}/{packageName}`
+					if packageEntry.type == "dir" then
+						local srcPath = `{packagePath}/src`
+						if fs.exists(srcPath) and fs.type(srcPath) == "dir" then
+							scopeTree[packageName] = {
+								["$path"] = `{projectPackagePath}/src`,
+							}
+						else
+							scopeTree[packageName] = {
+								["$path"] = projectPackagePath,
+							}
+						end
+					elseif packageEntry.type == "file" then
+						local baseName = string.match(packageName, "^(.*)%.luau?$")
+						if baseName ~= nil then
+							scopeTree[baseName] = {
+								["$path"] = `{projectRelativePath}/_Index/{scopeEntry.name}/{packageName}`,
+							}
+						end
+					end
+				end
+				indexTree[scopeEntry.name] = scopeTree
+			end
+			tree._Index = indexTree
+		elseif entry.type == "file" then
+			local baseName = string.match(name, "^(.*)%.luau?$")
+			if baseName ~= nil then
+				tree[baseName] = {
+					["$path"] = `{projectRelativePath}/{name}`,
+				}
+			end
+		end
+	end
+
+	return tree
+end
+
 local function pluginTree(
 	srcPath: string,
 	pluginGuiPath: string,
@@ -29,11 +104,7 @@ local function pluginTree(
 				["$path"] = pluginGuiPath,
 			},
 		},
-		Packages = {
-			["$path"] = {
-				optional = packagesPath,
-			},
-		},
+		Packages = packagesTree(packagesPath),
 	}
 
 	if loaderPath ~= nil then
@@ -122,7 +193,9 @@ local function writePluginProjects(plugin: Plugin)
 	writeJson(`plugins/{name}/default.project.json`, {
 		name = name,
 		globIgnorePaths = {
-			"Packages/_Index/**/examples",
+			"../../Packages/_Index/**/examples",
+			"../../Packages/_Index/**/benchmarks",
+			"../../Packages/_Index/**/bin",
 			"**/*.spec.luau",
 			"**/place.project.json",
 			"**/benchmarks.project.json",
@@ -133,7 +206,9 @@ local function writePluginProjects(plugin: Plugin)
 		writeJson(`plugins/{name}/test.project.json`, {
 			name = `{name}-runtests`,
 			globIgnorePaths = {
-				"Packages/_Index/**/examples",
+				"../../Packages/_Index/**/examples",
+				"../../Packages/_Index/**/benchmarks",
+				"../../Packages/_Index/**/bin",
 				"**/place.project.json",
 				"**/benchmarks.project.json",
 			},
@@ -157,11 +232,7 @@ local function writeRootProject(pluginList: { Plugin })
 				["$path"] = "libraries/PluginGui",
 			},
 		},
-		Packages = {
-			["$path"] = {
-				optional = "Packages",
-			},
-		},
+		Packages = packagesTree("Packages"),
 	}
 
 	for _, plugin in pluginList do
@@ -174,6 +245,8 @@ local function writeRootProject(pluginList: { Plugin })
 		name = "stravant-plugins",
 		globIgnorePaths = {
 			"Packages/_Index/**/examples",
+			"Packages/_Index/**/benchmarks",
+			"Packages/_Index/**/bin",
 			"**/place.project.json",
 			"**/benchmarks.project.json",
 		},

@@ -38,7 +38,7 @@ Plugins are PascalCase dirs under `plugins/`. Generation writes gitignored:
 - `default.project.json` — all plugins (Folder tree for Luau LSP / typecheck)
 - `plugins/<Name>/default.project.json` — single-plugin `.rbxmx` build
 - `plugins/<Name>/test.project.json` — per-plugin test harness (when specs exist)
-- `scripts/test/test.project.json` — combined multi-plugin RunTests project (written by the test script)
+- `test.project.json` — combined multi-plugin RunTests project (written by the test script)
 
 Opening the folder in VS Code or a VS Code based editor causes `lute scripts/build.luau generate --watch` to run automatically whilst the editor is open. Elsewhere, run `generate` or `generate --watch` when those files are missing.
 

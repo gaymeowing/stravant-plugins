@@ -44,9 +44,9 @@ local function takeScreenshot(name: string?)
 end
 
 local function runTests(filter: string)
-	local src = (script.Parent :: any):FindFirstChild("Src") :: Instance
+	local root = script.Parent :: Instance
 
-	local summary = TestRunner.run(src, plugin, filter, {
+	local summary = TestRunner.run(root, plugin, filter, {
 		screenshot = takeScreenshot,
 		onSection = function(kind: "plugin" | "suite", name: string)
 			sendJson({ type = "section", kind = kind, name = name })

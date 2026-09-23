@@ -83,47 +83,13 @@ local function createExpect(value: any): ExpectResult
 	}
 end
 
-local LogService = game:GetService("LogService")
-
-local function scrubTrace(trace: string): string
-	local kept = {}
-	for _, line in string.split(trace, "\n") do
-		if string.find(line, "TestRunner", 1, true) or string.find(line, "RunTests.Loader", 1, true) then
-			continue
-		end
-		table.insert(kept, line)
-	end
-	return table.concat(kept, "\n")
-end
-
 local function callWithTrace(fn: () -> ...any): (boolean, ...any)
-	local logged: { string } = {}
-	local connection = LogService.MessageOut:Connect(function(text, messageType)
-		if messageType == Enum.MessageType.MessageError then
-			table.insert(logged, text)
-		end
+	return xpcall(fn, function(err)
+		return debug.traceback(tostring(err), 2)
 	end)
-
-	local pack = table.pack(xpcall(fn, function(err)
-		local errText = tostring(err)
-		local message = if #logged == 0 then
-			debug.traceback(errText, 2)
-		elseif string.find(table.concat(logged, "\n"), errText, 1, true) then
-			table.concat(logged, "\n")
-		else
-			table.concat(logged, "\n") .. "\n" .. debug.traceback(errText, 2)
-		end
-		return scrubTrace(message)
-	end))
-	connection:Disconnect()
-
-	if pack[1] then
-		return true, table.unpack(pack, 2, pack.n)
-	end
-	return false, tostring(pack[2])
 end
 
-local function resolvePluginAndModule(src: Instance, testModule: ModuleScript): (string, string)
+local function resolveModuleName(src: Instance, testModule: ModuleScript): string
 	local parts = {}
 	local current: Instance? = testModule
 	while current ~= nil and current ~= src do
@@ -132,12 +98,38 @@ local function resolvePluginAndModule(src: Instance, testModule: ModuleScript): 
 	end
 
 	local fileName = parts[#parts] or testModule.Name
-	local moduleName = if string.sub(fileName, -5) == ".spec" then string.sub(fileName, 1, -6) else fileName
-	local pluginName = if #parts >= 2 then parts[1] else "Tests"
-	return pluginName, moduleName
+	return if string.sub(fileName, -5) == ".spec" then string.sub(fileName, 1, -6) else fileName
 end
 
-local function run(src: Instance, pluginInstance: Plugin, filter: string, hooks: RunHooks?): RunSummary
+local function isUnderPluginGui(src: Instance, testModule: ModuleScript): boolean
+	local current: Instance? = testModule.Parent
+	while current ~= nil and current ~= src do
+		if current.Name == "PluginGui" then
+			return true
+		end
+		current = current.Parent
+	end
+	return false
+end
+
+local function collectPluginSources(root: Instance): { { name: string, src: Instance } }
+	local pluginSources = {}
+	for _, child in root:GetChildren() do
+		if child.Name == "Loader" or child.Name == "TestRunner" or child.Name == "Packages" then
+			continue
+		end
+		table.insert(pluginSources, {
+			name = child.Name,
+			src = child,
+		})
+	end
+	table.sort(pluginSources, function(a, b)
+		return a.name < b.name
+	end)
+	return pluginSources
+end
+
+local function run(root: Instance, pluginInstance: Plugin, filter: string, hooks: RunHooks?): RunSummary
 	local screenshot = if hooks then hooks.screenshot else nil
 	local onSection = if hooks then hooks.onSection else nil
 	local onResult = if hooks then hooks.onResult else nil
@@ -193,88 +185,93 @@ local function run(src: Instance, pluginInstance: Plugin, filter: string, hooks:
 		end
 	end
 
-	local testModules = src:QueryDescendants("ModuleScript")
-	table.sort(testModules, function(a, b)
-		return a:GetFullName() < b:GetFullName()
-	end)
-
-	for _, testModule in testModules do
-		local pluginName, moduleName = resolvePluginAndModule(src, testModule)
-		if pluginName == "PluginGui" or string.sub(testModule.Name, -5) ~= ".spec" then
-			continue
-		end
-
-		local ok, testFn = callWithTrace(function()
-			return require(testModule)
+	for _, pluginSource in collectPluginSources(root) do
+		local pluginName = pluginSource.name
+		local src = pluginSource.src
+		local testModules = src:QueryDescendants("ModuleScript")
+		table.sort(testModules, function(a, b)
+			return a:GetFullName() < b:GetFullName()
 		end)
-		if not ok then
-			emitPlugin(pluginName)
-			emitSuite(moduleName)
-			record(pluginName, "(load)", "fail", 0, tostring(testFn))
-			continue
-		end
 
-		if type(testFn) ~= "function" then
-			emitPlugin(pluginName)
-			emitSuite(moduleName)
-			record(pluginName, "(load)", "fail", 0, "Test module did not return a function")
-			continue
-		end
-
-		local tests: { { name: string, fn: () -> () } } = {}
-		local t: TestContext = {
-			test = function(name: string, fn: () -> ())
-				table.insert(tests, { name = name, fn = fn })
-			end,
-			expect = createExpect,
-			fail = function(message: string)
-				error(message, 2)
-			end,
-			screenshot = function(name: string?)
-				if screenshot then
-					screenshot(name)
-				end
-			end,
-			plugin = pluginInstance,
-		}
-
-		local registerOk, registerErr = callWithTrace(function()
-			testFn(t)
-			return true
-		end)
-		if not registerOk then
-			emitPlugin(pluginName)
-			emitSuite(moduleName)
-			record(pluginName, "(register)", "fail", 0, tostring(registerErr))
-			continue
-		end
-
-		local matched: { { name: string, fn: () -> () } } = {}
-		for _, testEntry in tests do
-			local fullName = moduleName .. " > " .. testEntry.name
-			if filter == "all" or string.find(fullName, filter, 1, true) then
-				table.insert(matched, testEntry)
+		for _, testModule in testModules do
+			if isUnderPluginGui(src, testModule) or string.sub(testModule.Name, -5) ~= ".spec" then
+				continue
 			end
-		end
-		if #matched == 0 then
-			continue
-		end
 
-		emitPlugin(pluginName)
-		emitSuite(moduleName)
+			local moduleName = resolveModuleName(src, testModule)
 
-		for _, testEntry in matched do
-			local startTime = os.clock()
-			local runOk, runErr = callWithTrace(function()
-				testEntry.fn()
+			local ok, testFn = callWithTrace(function()
+				return (require)(testModule)
+			end)
+			if not ok then
+				emitPlugin(pluginName)
+				emitSuite(moduleName)
+				record(pluginName, "(load)", "fail", 0, tostring(testFn))
+				continue
+			end
+
+			if type(testFn) ~= "function" then
+				emitPlugin(pluginName)
+				emitSuite(moduleName)
+				record(pluginName, "(load)", "fail", 0, "Test module did not return a function")
+				continue
+			end
+
+			local tests: { { name: string, fn: () -> () } } = {}
+			local t: TestContext = {
+				test = function(name: string, fn: () -> ())
+					table.insert(tests, { name = name, fn = fn })
+				end,
+				expect = createExpect,
+				fail = function(message: string)
+					error(message, 2)
+				end,
+				screenshot = function(name: string?)
+					if screenshot then
+						screenshot(name)
+					end
+				end,
+				plugin = pluginInstance,
+			}
+
+			local registerOk, registerErr = callWithTrace(function()
+				testFn(t)
 				return true
 			end)
-			local duration = math.round((os.clock() - startTime) * 1000)
+			if not registerOk then
+				emitPlugin(pluginName)
+				emitSuite(moduleName)
+				record(pluginName, "(register)", "fail", 0, tostring(registerErr))
+				continue
+			end
 
-			if runOk then
-				record(pluginName, testEntry.name, "pass", duration, nil)
-			else
-				record(pluginName, testEntry.name, "fail", duration, tostring(runErr))
+			local matched: { { name: string, fn: () -> () } } = {}
+			for _, testEntry in tests do
+				local fullName = moduleName .. " > " .. testEntry.name
+				if filter == "all" or string.find(fullName, filter, 1, true) then
+					table.insert(matched, testEntry)
+				end
+			end
+			if #matched == 0 then
+				continue
+			end
+
+			emitPlugin(pluginName)
+			emitSuite(moduleName)
+
+			for _, testEntry in matched do
+				local startTime = os.clock()
+				local runOk, runErr = callWithTrace(function()
+					testEntry.fn()
+					return true
+				end)
+				local duration = math.round((os.clock() - startTime) * 1000)
+
+				if runOk then
+					record(pluginName, testEntry.name, "pass", duration, nil)
+				else
+					record(pluginName, testEntry.name, "fail", duration, tostring(runErr))
+				end
 			end
 		end
 	end

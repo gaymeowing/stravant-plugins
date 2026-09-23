@@ -59,45 +59,111 @@ local function studioPluginsDir(): string
 	return `{process.homedir()}/Documents/Roblox/Plugins`
 end
 
-local function writeTestProject(names: { string })
-	local src: { [string]: any } = {
-		["$className"] = "Folder",
-	}
-	for _, name in names do
-		src[name] = {
-			["$path"] = `../../plugins/{name}/src`,
-			PluginGui = {
-				["$path"] = "../../libraries/PluginGui",
+local function packagesTree(projectRelativePath: string): { [string]: any }
+	local fsPath = "Packages"
+	if not fs.exists(fsPath) then
+		return {
+			["$path"] = {
+				optional = projectRelativePath,
 			},
 		}
 	end
 
-	fs.writeStringToFile(
-		PROJECT_PATH,
-		json.serialize({
-			name = "RunTests",
-			globIgnorePaths = {
-				"Packages/_Index/**/examples",
-				"**/place.project.json",
-				"**/benchmarks.project.json",
-			},
-			tree = {
+	local tree: { [string]: any } = {
+		["$className"] = "Folder",
+	}
+
+	for _, entry in fs.listDirectory(fsPath) do
+		local name = entry.name
+		if string.sub(name, 1, 1) == "." then
+			continue
+		end
+
+		if name == "_Index" and entry.type == "dir" then
+			local indexTree: { [string]: any } = {
 				["$className"] = "Folder",
-				Src = src,
-				Packages = {
-					["$path"] = {
-						optional = "../../Packages",
-					},
-				},
-				Loader = {
-					["$path"] = "runtests.server.luau",
-				},
-				TestRunner = {
-					["$path"] = "TestRunner.luau",
-				},
+			}
+			for _, scopeEntry in fs.listDirectory(`{fsPath}/_Index`) do
+				if scopeEntry.type ~= "dir" then
+					continue
+				end
+				local scopePath = `{fsPath}/_Index/{scopeEntry.name}`
+				local scopeTree: { [string]: any } = {
+					["$className"] = "Folder",
+				}
+				for _, packageEntry in fs.listDirectory(scopePath) do
+					local packageName = packageEntry.name
+					local packagePath = `{scopePath}/{packageName}`
+					local projectPackagePath = `{projectRelativePath}/_Index/{scopeEntry.name}/{packageName}`
+					if packageEntry.type == "dir" then
+						local srcPath = `{packagePath}/src`
+						if fs.exists(srcPath) and fs.type(srcPath) == "dir" then
+							scopeTree[packageName] = {
+								["$path"] = `{projectPackagePath}/src`,
+							}
+						else
+							scopeTree[packageName] = {
+								["$path"] = projectPackagePath,
+							}
+						end
+					elseif packageEntry.type == "file" then
+						local baseName = string.match(packageName, "^(.*)%.luau?$")
+						if baseName ~= nil then
+							scopeTree[baseName] = {
+								["$path"] = `{projectRelativePath}/_Index/{scopeEntry.name}/{packageName}`,
+							}
+						end
+					end
+				end
+				indexTree[scopeEntry.name] = scopeTree
+			end
+			tree._Index = indexTree
+		elseif entry.type == "file" then
+			local baseName = string.match(name, "^(.*)%.luau?$")
+			if baseName ~= nil then
+				tree[baseName] = {
+					["$path"] = `{projectRelativePath}/{name}`,
+				}
+			end
+		end
+	end
+
+	return tree
+end
+
+local function writeTestProject(names: { string })
+	-- Each plugin mounts as RunTests/<Name>/ (src contents), sibling to Packages,
+	-- so script.Parent.Parent.Packages and PluginGui's ../../Packages both resolve.
+	local tree: { [string]: any } = {
+		["$className"] = "Folder",
+		Packages = packagesTree("Packages"),
+		Loader = {
+			["$path"] = "scripts/test/runtests.server.luau",
+		},
+		TestRunner = {
+			["$path"] = "scripts/test/TestRunner.luau",
+		},
+	}
+	for _, name in names do
+		tree[name] = {
+			["$path"] = `plugins/{name}/src`,
+			PluginGui = {
+				["$path"] = "libraries/PluginGui",
 			},
-		}) .. "\n"
-	)
+		}
+	end
+
+	fs.writeStringToFile(PROJECT_PATH, json.serialize({
+		name = "RunTests",
+		globIgnorePaths = {
+			"Packages/_Index/**/examples",
+			"Packages/_Index/**/benchmarks",
+			"Packages/_Index/**/bin",
+			"**/place.project.json",
+			"**/benchmarks.project.json",
+		},
+		tree = tree,
+	}) .. "\n")
 end
 
 local function installTestPlugin()
