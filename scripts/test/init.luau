@@ -77,6 +77,7 @@ local function writeTestProject(names: { string })
 		json.serialize({
 			name = "RunTests",
 			globIgnorePaths = {
+				"Packages/_Index/**/examples",
 				"**/place.project.json",
 				"**/benchmarks.project.json",
 			},

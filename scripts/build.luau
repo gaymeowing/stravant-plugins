@@ -122,6 +122,7 @@ local function writePluginProjects(plugin: Plugin)
 	writeJson(`plugins/{name}/default.project.json`, {
 		name = name,
 		globIgnorePaths = {
+			"Packages/_Index/**/examples",
 			"**/*.spec.luau",
 			"**/place.project.json",
 			"**/benchmarks.project.json",
@@ -132,6 +133,7 @@ local function writePluginProjects(plugin: Plugin)
 		writeJson(`plugins/{name}/test.project.json`, {
 			name = `{name}-runtests`,
 			globIgnorePaths = {
+				"Packages/_Index/**/examples",
 				"**/place.project.json",
 				"**/benchmarks.project.json",
 			},
@@ -171,6 +173,7 @@ local function writeRootProject(pluginList: { Plugin })
 	writeJson("default.project.json", {
 		name = "stravant-plugins",
 		globIgnorePaths = {
+			"Packages/_Index/**/examples",
 			"**/place.project.json",
 			"**/benchmarks.project.json",
 		},
