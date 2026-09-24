@@ -24,8 +24,8 @@ type PendingChange = {
 --- Returns a disconnect function — keep it reachable or GC closes the watchers.
 local function watchDirectory(path: string, onChange: ChangeCallback, debounce: number?): () -> ()
 	local pendingByPath = {} :: { [string]: PendingChange }
+	local handles = {} :: { [string]: fs.WatchHandle }
 	local watched = {} :: { [string]: boolean }
-	local handles = {} :: { fs.WatchHandle }
 	local pendingOrder = {} :: { string }
 	local disconnected = false
 	local lastEventAt = 0
@@ -96,26 +96,56 @@ local function watchDirectory(path: string, onChange: ChangeCallback, debounce: 
 		kickTimer()
 	end
 
+	local function unwatchTree(dir: string)
+		local prefix = `{dir}/`
+		local toClose = {} :: { string }
+		if watched[dir] then
+			table.insert(toClose, dir)
+		end
+		for watchedDir in watched do
+			if startsWith(watchedDir, prefix) then
+				table.insert(toClose, watchedDir)
+			end
+		end
+
+		for _, watchedDir in toClose do
+			local handle = handles[watchedDir]
+			if handle ~= nil then
+				handle:close()
+				handles[watchedDir] = nil
+			end
+			watched[watchedDir] = nil
+		end
+
+		local keptOrder = {} :: { string }
+		for _, key in pendingOrder do
+			if key == dir or startsWith(key, prefix) then
+				pendingByPath[key] = nil
+			else
+				table.insert(keptOrder, key)
+			end
+		end
+		pendingOrder = keptOrder
+	end
+
 	local function watch(dir: string)
 		if disconnected or watched[dir] or not isDir(dir) then
 			return
 		end
 		watched[dir] = true
 
-		table.insert(
-			handles,
-			fs.watch(dir, function(filename: string, event: fs.WatchEvent)
-				if disconnected then
-					return
-				end
-				-- Adopt new subdirs immediately; only onChange is debounced.
-				local childPath = `{dir}/{filename}`
-				if isDir(childPath) then
-					watch(childPath)
-				end
-				enqueue(dir, filename, event)
-			end)
-		)
+		handles[dir] = fs.watch(dir, function(filename: string, event: fs.WatchEvent)
+			if disconnected then
+				return
+			end
+			local childPath = `{dir}/{filename}`
+			if isDir(childPath) then
+				watch(childPath)
+			elseif watched[childPath] then
+				unwatchTree(childPath)
+			end
+			enqueue(dir, filename, event)
+		end)
 
 		for _, entry in fs.listdir(dir) do
 			if entry.type == "dir" and not startsWith(entry.name, ".") then
