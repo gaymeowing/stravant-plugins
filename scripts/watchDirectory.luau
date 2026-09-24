@@ -7,17 +7,17 @@ local fs = require("@lute/fs")
 
 export type ChangeCallback = (dir: string, filename: string, event: fs.WatchEvent) -> ()
 
+type PendingChange = {
+	event: fs.WatchEvent,
+	filename: string,
+	dir: string,
+}
+
 local DEFAULT_DEBOUNCE_SEC = 0.08
 
 local function isDir(path: string): boolean
 	return fs.exists(path) and fs.type(path) == "dir"
 end
-
-type PendingChange = {
-	dir: string,
-	filename: string,
-	event: fs.WatchEvent,
-}
 
 --- Watch `path` and all current/future subdirectories (skips dot-dirs).
 --- FS events are trailing-debounced on a reused timer thread, then flushed to `onChange`.
