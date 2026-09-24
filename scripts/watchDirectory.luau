@@ -49,13 +49,17 @@ local function watchDirectory(path: string, onChange: ChangeCallback, debounce: 
 					local byPath = pendingByPath
 					pendingOrder = {}
 					pendingByPath = {}
-					for _, key in order do
-						if disconnected then
-							break
+					-- Flush off this timer thread — yielding fs/process in onChange
+					-- breaks lute (listdir returns a string, isDir lies, etc.).
+					task.spawn(function()
+						for _, key in order do
+							if disconnected then
+								break
+							end
+							local change = byPath[key]
+							onChange(change.dir, change.filename, change.event)
 						end
-						local change = byPath[key]
-						onChange(change.dir, change.filename, change.event)
-					end
+					end)
 				end
 			end
 			if disconnected then

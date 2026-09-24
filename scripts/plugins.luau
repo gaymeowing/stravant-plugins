@@ -319,17 +319,6 @@ local function updatePluginTests(name: string)
 	end
 end
 
-local function isCriticalPluginPath(rest: string?): boolean
-	if rest == nil then
-		return true
-	end
-	return rest == "src"
-		or startsWith(rest, "src/")
-		or startsWith(rest, "src\\")
-		or rest == "loader.server.luau"
-		or rest == "PLUGIN.toml"
-end
-
 local function isGeneratedPath(relativePath: string): boolean
 	return endsWith(relativePath, ".project.json")
 		or endsWith(relativePath, ".rbxmx")
@@ -365,7 +354,13 @@ local function handlePluginPathChange(name: string, pluginRelativePath: string?)
 		return
 	end
 
-	if isCriticalPluginPath(pluginRelativePath) and not warnMissingLayout(name) then
+	-- Layout roots only — ordinary src/* deletes must not remove the plugin.
+	local layoutPath = pluginRelativePath == nil
+		or pluginRelativePath == "src"
+		or pluginRelativePath == "loader.server.luau"
+		or pluginRelativePath == "PLUGIN.toml"
+
+	if layoutPath and not warnMissingLayout(name) then
 		if existing ~= nil then
 			removePlugin(name)
 		end
