@@ -3,24 +3,23 @@
 -- Usage: lute scripts/createReleases.luau
 -- Env: GH_TOKEN
 
+local plugins = require("@scripts/plugins")
 local process = require("@std/process")
-local io = require("@std/io")
-local fs = require("@std/fs")
 local json = require("@std/json")
-
-local pluginInfo = require("./pluginInfo")
+local fs = require("@std/fs")
 
 local REPO_URL = "https://github.com/gaymeowing/stravant-plugins"
 local COMMIT_URL = `{REPO_URL}/commits/`
 local PULL_URL = `{REPO_URL}/pull/`
 
-local pluginNames = {}
-for _, entry in fs.listDirectory("plugins") do
-	if entry.type == "dir" and string.match(entry.name, "^[A-Z][A-Za-z0-9]*$") then
-		table.insert(pluginNames, entry.name)
+local function reverse<V>(t: { V }): { V }
+	local length = #t
+	for index = 1, length // 2 do
+		local swapIndex = (length - index) + 1
+		t[index], t[swapIndex] = t[swapIndex], t[index]
 	end
+    return t
 end
-table.sort(pluginNames)
 
 local function releaseExists(tag: string): boolean
 	local result = process.run({ "gh", "release", "view", tag })
@@ -85,6 +84,7 @@ local function lastReleasedCommitTime(pluginName: string): number?
 	return commitUnixTime(commit)
 end
 
+
 local function commitsAfter(pluginName: string, afterUnix: number): { string }
 	local result = process.run({
 		"git",
@@ -99,16 +99,12 @@ local function commitsAfter(pluginName: string, afterUnix: number): { string }
 	if not result.ok or result.stdout == "" then
 		return {}
 	end
-	local commits = {}
+	local commits = {} :: { string }
 	for hash in string.gmatch(result.stdout :: string, "%x+") do
 		table.insert(commits, hash)
 	end
 	-- git log is newest-first; release notes read oldest-first
-	local reversed = {}
-	for index = #commits, 1, -1 do
-		table.insert(reversed, commits[index])
-	end
-	return reversed
+	return reverse(commits)
 end
 
 local function commitInfo(commit: string): (string, string)
@@ -218,29 +214,30 @@ local function buildNotes(pluginName: string, afterUnix: number): string
 	return table.concat(lines, "\n")
 end
 
-local function releasePlugin(pluginName: string)
-	local version = pluginInfo(pluginName).version
+local function releasePlugin(plugin: plugins.PluginInfo)
+	local pluginName = plugin.name
+	local version = plugin.version
 	local releaseTag = `{pluginName}@{version}`
 
-	io.write(`Releasing {releaseTag}\n`)
+	print(`Releasing {releaseTag}\n`)
 
 	if fs.exists("build") then
 		fs.removeDirectory("build", { recursive = true })
 	end
 	fs.createDirectory("build", { makeParents = true })
 
-	local build = process.run({ "lute", "scripts/build.luau", pluginName, "--out", "build" })
+	local build = process.run({ "lute", "scripts/build.luau", pluginName, "--out", "build", "--rbxm" })
 	if not build.ok then
 		if build.stdout ~= "" then
-			io.write(build.stdout)
+			print(build.stdout)
 		end
 		error(build.stderr)
 	end
 	if build.stdout ~= "" then
-		io.write(build.stdout)
+		print(build.stdout)
 	end
 
-	local asset = `build/{pluginName}.rbxmx`
+	local asset = `build/{pluginName}.rbxm`
 	if not fs.exists(asset) then
 		error(`Missing build artifact {asset}`)
 	end
@@ -266,25 +263,22 @@ local function releasePlugin(pluginName: string)
 		error(created.stderr)
 	end
 	if created.stdout ~= "" then
-		io.write(created.stdout)
+		print(created.stdout)
 	end
 end
 
 local released = 0
-for _, pluginName in pluginNames do
-	if not fs.exists(`plugins/{pluginName}/PLUGIN.toml`) then
-		continue
-	end
-	local version = pluginInfo(pluginName).version
-	local releaseTag = `{pluginName}@{version}`
+for _, plugin in plugins.list() do
+	local version = plugin.version
+	local releaseTag = `{plugin.name}@{version}`
 	if releaseExists(releaseTag) then
-		io.write(`{releaseTag} already exists; skipping\n`)
+		print(`{releaseTag} already exists; skipping\n`)
 		continue
 	end
-	releasePlugin(pluginName)
+	releasePlugin(plugin)
 	released += 1
 end
 
 if released == 0 then
-	io.write("No unreleased PLUGIN.toml versions; nothing to do\n")
+	print("No unreleased PLUGIN.toml versions; nothing to do\n")
 end

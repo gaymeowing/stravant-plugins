@@ -1,11 +1,9 @@
+local plugins = require("@scripts/plugins")
 local process = require("@std/process")
-local io = require("@std/io")
-local fs = require("@std/fs")
 local json = require("@std/json")
-local net = require("@std/net")
 local task = require("@std/task")
-
-local pluginInfo = require("./pluginInfo")
+local net = require("@std/net")
+local fs = require("@std/fs")
 
 local apiKey = process.env.ROBLOX_API_KEY :: string
 local tag = process.env.TAG :: string
@@ -16,7 +14,7 @@ if fs.exists(downloadDir) then
 end
 fs.createDirectory(downloadDir, { makeParents = true })
 
-io.write(`Downloading .rbxmx from release {tag}\n`)
+print(`Downloading .rbxm from release {tag}\n`)
 local download = process.run({
 	"gh",
 	"release",
@@ -25,7 +23,7 @@ local download = process.run({
 	"--dir",
 	downloadDir,
 	"--pattern",
-	"*.rbxmx",
+	"*.rbxm",
 })
 if not download.ok then
 	error(download.stderr)
@@ -54,19 +52,23 @@ local function pollOperation(operationPath: string)
 	error("Timed out waiting for asset operation.")
 end
 
-local function publishRbxmx(path: string)
+local function publishRbxm(path: string)
 	local filename = path:match("([^/\\]+)$") or path
-	local name = filename:match("^(.*)%.rbxmx$")
+	local name = filename:match("^(.*)%.rbxm$")
 	if not name then
-		error(`Not an .rbxmx: {path}`)
+		error(`Not an .rbxm: {path}`)
 	end
 	if not fs.exists(`plugins/{name}`) then
 		error(`Unknown plugin: {name}`)
 	end
 
-	local info = pluginInfo(name)
-	io.write(`Publishing {name} → asset {info.id}\n`)
-	local response = net.request(`https://apis.roblox.com/assets/v1/assets/{info.id}`, {
+	local info = plugins.get(name)
+	local assetId = info.id
+	if assetId == nil then
+		error(`{name} has no Id in PLUGIN.toml (local-only plugin); skipping Creator Store publish`)
+	end
+	print(`Publishing {name} → asset {assetId}\n`)
+	local response = net.request(`https://apis.roblox.com/assets/v1/assets/{assetId}`, {
 		method = "PATCH",
 		headers = {
 			["x-api-key"] = apiKey,
@@ -74,7 +76,7 @@ local function publishRbxmx(path: string)
 		},
 		body = json.serialize({
 			assetType = "Plugin",
-			assetId = info.id,
+			assetId = assetId,
 			displayName = name,
 			description = `{name} Studio plugin`,
 			fileContent = fs.readFileToString(path),
@@ -97,12 +99,12 @@ end
 
 local found = false
 for _, entry in fs.listDirectory(downloadDir) do
-	if entry.type == "file" and entry.name:match("%.rbxmx$") then
+	if entry.type == "file" and entry.name:match("%.rbxm$") then
 		found = true
-		publishRbxmx(`{downloadDir}/{entry.name}`)
+		publishRbxm(`{downloadDir}/{entry.name}`)
 	end
 end
 
 if not found then
-	error(`No .rbxmx assets on release {tag}`)
+	error(`No .rbxm assets on release {tag}`)
 end

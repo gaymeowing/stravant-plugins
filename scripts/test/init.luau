@@ -1,9 +1,27 @@
+local addBaseGlobIgnorePaths = require("@scripts/baseGlobIgnorePaths")
+local richterm = require("@batteries/richterm")
+local packages = require("@scripts/packages")
+local plugins = require("@scripts/plugins")
+local server = require("@lute/net/server")
 local process = require("@std/process")
-local fs = require("@std/fs")
+local rojo = require("@scripts/rojo")
 local json = require("@std/json")
 local task = require("@std/task")
-local server = require("@lute/net/server")
-local richterm = require("@batteries/richterm")
+local fs = require("@std/fs")
+
+type PluginSummary = {
+	name: string,
+	passed: number,
+	failed: number,
+	total: number,
+}
+
+type DoneSummary = {
+	passed: number,
+	failed: number,
+	total: number,
+	plugins: { PluginSummary },
+}
 
 local PORT = 38741
 local CONNECT_TIMEOUT = 30
@@ -11,45 +29,6 @@ local RUN_TIMEOUT = 120
 
 local PROJECT_PATH = "test.project.json"
 local BUILD_PATH = "RunTests.rbxmx"
-
-local pluginNames = {}
-for _, entry in fs.listDirectory("plugins") do
-	if entry.type == "dir" and string.match(entry.name, "^[A-Z][A-Za-z0-9]*$") then
-		table.insert(pluginNames, entry.name)
-	end
-end
-table.sort(pluginNames)
-
-local function findPluginName(name: string): string?
-	local needle = string.lower(name)
-	for _, pluginName in pluginNames do
-		if string.lower(pluginName) == needle then
-			return pluginName
-		end
-	end
-	return nil
-end
-
-local function hasTests(pluginName: string): boolean
-	local function hasSpecIn(dir: string): boolean
-		for _, entry in fs.listDirectory(dir) do
-			if entry.type == "file" and string.sub(entry.name, -10) == ".spec.luau" then
-				return true
-			elseif entry.type == "dir" and string.sub(entry.name, 1, 1) ~= "." then
-				if hasSpecIn(`{dir}/{entry.name}`) then
-					return true
-				end
-			end
-		end
-		return false
-	end
-
-	local src = `plugins/{pluginName}/src`
-	if not fs.exists(src) then
-		return false
-	end
-	return hasSpecIn(src)
-end
 
 local function studioPluginsDir(): string
 	local localAppData = process.env.LOCALAPPDATA
@@ -59,115 +38,25 @@ local function studioPluginsDir(): string
 	return `{process.homedir()}/Documents/Roblox/Plugins`
 end
 
-local function packagesTree(projectRelativePath: string): { [string]: any }
-	local fsPath = "Packages"
-	if not fs.exists(fsPath) then
-		return {
-			["$path"] = {
-				optional = projectRelativePath,
-			},
-		}
-	end
-
-	local tree: { [string]: any } = {
-		["$className"] = "Folder",
-	}
-
-	for _, entry in fs.listDirectory(fsPath) do
-		local name = entry.name
-		if string.sub(name, 1, 1) == "." then
-			continue
-		end
-
-		if name == "_Index" and entry.type == "dir" then
-			local indexTree: { [string]: any } = {
-				["$className"] = "Folder",
-			}
-			for _, scopeEntry in fs.listDirectory(`{fsPath}/_Index`) do
-				if scopeEntry.type ~= "dir" then
-					continue
-				end
-				local scopePath = `{fsPath}/_Index/{scopeEntry.name}`
-				local scopeTree: { [string]: any } = {
-					["$className"] = "Folder",
-				}
-				for _, packageEntry in fs.listDirectory(scopePath) do
-					local packageName = packageEntry.name
-					local packagePath = `{scopePath}/{packageName}`
-					local projectPackagePath = `{projectRelativePath}/_Index/{scopeEntry.name}/{packageName}`
-					if packageEntry.type == "dir" then
-						local srcPath = `{packagePath}/src`
-						if fs.exists(srcPath) and fs.type(srcPath) == "dir" then
-							scopeTree[packageName] = {
-								["$path"] = `{projectPackagePath}/src`,
-							}
-						else
-							scopeTree[packageName] = {
-								["$path"] = projectPackagePath,
-							}
-						end
-					elseif packageEntry.type == "file" then
-						local baseName = string.match(packageName, "^(.*)%.luau?$")
-						if baseName ~= nil then
-							scopeTree[baseName] = {
-								["$path"] = `{projectRelativePath}/_Index/{scopeEntry.name}/{packageName}`,
-							}
-						end
-					end
-				end
-				indexTree[scopeEntry.name] = scopeTree
-			end
-			tree._Index = indexTree
-		elseif entry.type == "file" then
-			local baseName = string.match(name, "^(.*)%.luau?$")
-			if baseName ~= nil then
-				tree[baseName] = {
-					["$path"] = `{projectRelativePath}/{name}`,
-				}
-			end
-		end
-	end
-
-	return tree
+local function installedTestPluginPath(): string
+	return `{studioPluginsDir()}/RunTests.rbxmx`
 end
 
 local function writeTestProject(names: { string })
 	-- Each plugin mounts as RunTests/<Name>/ (src contents), sibling to Packages,
 	-- so script.Parent.Parent.Packages and PluginGui's ../../Packages both resolve.
-	local tree: { [string]: any } = {
-		["$className"] = "Folder",
-		Packages = packagesTree("Packages"),
-		Loader = {
-			["$path"] = "scripts/test/runtests.server.luau",
-		},
-		TestRunner = {
-			["$path"] = "scripts/test/TestRunner.luau",
-		},
-	}
+	local project = rojo.project("RunTests")
+	addBaseGlobIgnorePaths(project)
+	local tree = project.tree
+	tree:addScript("Loader", "scripts/test/runtests.server.luau")
+	tree:addScript("TestRunner", "scripts/test/TestRunner.luau")
+	tree.Packages = packages.tree()
+
 	for _, name in names do
-		tree[name] = {
-			["$path"] = `plugins/{name}/src`,
-			PluginGui = {
-				["$path"] = "libraries/PluginGui",
-			},
-		}
+		local pluginNode = tree:addScript(name, `plugins/{name}/src`)
+		pluginNode:addScript("PluginGui", "libraries/PluginGui")
 	end
-
-	fs.writeStringToFile(PROJECT_PATH, json.serialize({
-		name = "RunTests",
-		globIgnorePaths = {
-			"Packages/_Index/**/examples",
-			"Packages/_Index/**/benchmarks",
-			"Packages/_Index/**/bin",
-			"**/place.project.json",
-			"**/benchmarks.project.json",
-		},
-		tree = tree,
-	}) .. "\n")
-end
-
-local function installedTestPluginPath(): string
-	return `{studioPluginsDir()}/RunTests.rbxmx`
+	project:write(PROJECT_PATH)
 end
 
 local function installTestPlugin()
@@ -196,61 +85,84 @@ end
 
 local function finish(exitCode: number): never
 	uninstallTestPlugin()
-	process.exit(exitCode)
+	return process.exit(exitCode)
 end
 
-local args = process.args
-local selected: { string } = {}
-local seen: { [string]: boolean } = {}
+local function pluginNamesToTest(): { string }
+	local args = process.args
+	local secondArg = args[2]
+	local selected: { plugins.PluginInfo }
 
-local secondArg = args[2]
-if (secondArg and string.lower(secondArg) == "all") or not secondArg then
-	selected = pluginNames
-else
-	for index = 2, #args do
-		local arg = args[index]
-		local pluginName = findPluginName(arg)
-		if not pluginName then
-			print(`Unknown plugin: {arg}`)
-			process.exit(1)
-		elseif not seen[pluginName] then
-			seen[pluginName] = true
-			table.insert(selected, pluginName)
+	if secondArg == nil or string.lower(secondArg) == "all" then
+		selected = plugins.list()
+	else
+		selected = {}
+		local seen: { [string]: boolean } = {}
+		for index = 2, #args do
+			local arg = args[index]
+			local plugin = plugins.find(arg)
+			if plugin == nil then
+				print(`Unknown plugin: {arg}`)
+				process.exit(1)
+			elseif not seen[plugin.name] then
+				seen[plugin.name] = true
+				table.insert(selected, plugin)
+			end
+		end
+	end
+
+	local names = {} :: { string }
+	for _, plugin in selected do
+		if plugin.hasTests then
+			table.insert(names, plugin.name)
+		end
+	end
+	return names
+end
+
+local function parsePluginSummaries(raw: any): { PluginSummary }
+	local summaries = {} :: { PluginSummary }
+	if type(raw) ~= "table" then
+		return summaries
+	end
+	for _, entry in raw :: { any } do
+		if type(entry) == "table" then
+			table.insert(summaries, {
+				name = tostring(entry.name or "?"),
+				passed = tonumber(entry.passed) or 0,
+				failed = tonumber(entry.failed) or 0,
+				total = tonumber(entry.total) or 0,
+			})
+		end
+	end
+	return summaries
+end
+
+local function printResultLine(name: unknown, status: unknown, durationMs: number, err: unknown?)
+	local timeText = richterm.dim(`({durationMs}ms)`)
+	local label = if status == "pass"
+		then richterm.combine(richterm.bold, richterm.green)("PASS")
+		else richterm.combine(richterm.bold, richterm.red)("FAIL")
+	print(`\t\t{label} {name} {timeText}`)
+	if status ~= "pass" and err ~= nil then
+		for _, line in string.split(tostring(err), "\n") do
+			if line ~= "" then
+				print(`\t\t{richterm.italic(line)}`)
+			end
 		end
 	end
 end
 
-local toTest = {}
-for _, pluginName in selected do
-	if hasTests(pluginName) then
-		table.insert(toTest, pluginName)
-	end
-end
-
+local toTest = pluginNamesToTest()
 if #toTest == 0 then
 	print("No plugins with tests to run.")
 	process.exit(0)
 end
 
-local filter = "all"
-
 local ready = false
-local doneSummary: {
-	passed: number,
-	failed: number,
-	total: number,
-	plugins: {
-		{
-			name: string,
-			passed: number,
-			failed: number,
-			total: number,
-		}
-	},
-}? =
-	nil
-local studioWebsocket: server.ServerWebSocket? = nil
 local closed = false
+local doneSummary: DoneSummary? = nil
+local studioWebsocket: server.ServerWebSocket? = nil
 
 local httpServer = server.serve({
 	hostname = "127.0.0.1",
@@ -275,6 +187,7 @@ local httpServer = server.serve({
 				print(`Bad message from Studio: {text}`)
 				return
 			end
+
 			local message = data :: { [string]: any }
 			local messageType = message.type
 
@@ -285,7 +198,7 @@ local httpServer = server.serve({
 				ready = true
 				websocket:send(json.serialize({
 					type = "run",
-					filter = filter,
+					filter = "all",
 				}))
 			elseif messageType == "section" then
 				local name = tostring(message.name or "?")
@@ -297,22 +210,7 @@ local httpServer = server.serve({
 			elseif messageType == "output" then
 				print(tostring(message.message))
 			elseif messageType == "result" then
-				local name = message.name or "?"
-				local status = message.status or "?"
-				local duration = tonumber(message.duration) or 0
-				local timeText = richterm.dim(`({duration}ms)`)
-				if status == "pass" then
-					print(`\t\t{richterm.combine(richterm.bold, richterm.green)("PASS")} {name} {timeText}`)
-				else
-					print(`\t\t{richterm.combine(richterm.bold, richterm.red)("FAIL")} {name} {timeText}`)
-					if message.error then
-						for _, line in string.split(tostring(message.error), "\n") do
-							if line ~= "" then
-								print(`\t\t{richterm.italic(line)}`)
-							end
-						end
-					end
-				end
+				printResultLine(message.name or "?", message.status or "?", tonumber(message.duration) or 0, message.error)
 			elseif messageType == "screenshot" then
 				local name = message.name or "screenshot"
 				if message.success then
@@ -321,24 +219,11 @@ local httpServer = server.serve({
 					print(`\t\t{richterm.yellow("SCREENSHOT")}\t{name} {richterm.dim("(failed)")}`)
 				end
 			elseif messageType == "done" then
-				local plugins = {}
-				if type(message.plugins) == "table" then
-					for _, entry in message.plugins :: { any } do
-						if type(entry) == "table" then
-							table.insert(plugins, {
-								name = tostring(entry.name or "?"),
-								passed = tonumber(entry.passed) or 0,
-								failed = tonumber(entry.failed) or 0,
-								total = tonumber(entry.total) or 0,
-							})
-						end
-					end
-				end
 				doneSummary = {
 					passed = tonumber(message.passed) or 0,
 					failed = tonumber(message.failed) or 0,
 					total = tonumber(message.total) or 0,
-					plugins = plugins,
+					plugins = parsePluginSummaries(message.plugins),
 				}
 			end
 		end,
@@ -350,7 +235,8 @@ local httpServer = server.serve({
 
 print(`Building test runner for: {table.concat(toTest, ", ")}`)
 writeTestProject(toTest)
-local build = process.run({ "rojo", "build", PROJECT_PATH, "-o", BUILD_PATH })
+
+local build = process.system(`rojo build {PROJECT_PATH} -o {BUILD_PATH}`)
 if not build.ok then
 	if build.stderr ~= "" then
 		print(build.stderr)
@@ -359,6 +245,7 @@ if not build.ok then
 	print(`Failed to build {PROJECT_PATH}`)
 	process.exit(1)
 end
+
 installTestPlugin()
 print("\tDone. Open any place in Studio (enable Reload Plugins on File Changed if needed).")
 print(`Waiting for Studio on port {PORT}...`)
@@ -384,8 +271,7 @@ end
 
 httpServer.close()
 
-local summary = doneSummary
-if summary == nil then
+if doneSummary == nil then
 	if not closed and os.clock() >= runDeadline then
 		print(`\nTimed out waiting for test results after {RUN_TIMEOUT}s.`)
 	else
@@ -393,6 +279,8 @@ if summary == nil then
 	end
 	finish(1)
 end
+
+local summary = doneSummary :: DoneSummary
 
 print("")
 for _, plugin in summary.plugins do
@@ -412,5 +300,6 @@ if summary.failed > 0 then
 	)
 	finish(1)
 end
+
 print(`Results: {richterm.green(`{summary.passed} passed`)}, {summary.total} total`)
 finish(0)
