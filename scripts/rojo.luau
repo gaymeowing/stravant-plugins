@@ -23,7 +23,7 @@ export type Tree = setmetatable<{
 	["$className"]: string?,
 	["$path"]: string?,
 }, ProjectNodePrototype> & {
-	[string]: Tree,
+	[string]: Tree, -- this has to be done like this otherwise the type solver will kick & scream
 }
 
 --- Rojo project (`name` / `globIgnorePaths` / `tree`).
